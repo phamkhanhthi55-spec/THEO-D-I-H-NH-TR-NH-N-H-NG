@@ -262,73 +262,87 @@ async def _track_ghn_async(tracking_code, phone_last4=''):
             status_text = ''
             detail_text = ''
 
-            # Tìm status trên trang GHN
-            status_selectors = [
-                '.order-status', '.status', '[class*="status"]',
-                '[class*="Status"]', '.order-info',
-                'h2', 'h3', '.title'
-            ]
+            # Trích xuất hành trình chi tiết từ văn bản trang GHN
+            body_text = await page.inner_text('body')
+            lines = [l.strip() for l in body_text.split('\n') if l.strip()]
 
-            for selector in status_selectors:
-                try:
-                    elements = await page.query_selector_all(selector)
-                    if elements:
-                        for el in elements:
-                            text = await el.inner_text()
-                            text = text.strip()
-                            if text and len(text) > 2 and len(text) < 300:
-                                if not status_text:
-                                    status_text = text[:200]
-                                detail_text += text + '\n'
-                except Exception:
+            # 1. Tìm phần timeline sau "Hành trình đơn hàng"
+            start_idx = 0
+            for idx, line in enumerate(lines):
+                if 'hành trình đơn hàng' in line.lower():
+                    start_idx = idx + 1
+                    break
+
+            timeline_items = []
+            stages = ['tạo đơn', 'đang lấy hàng', 'đang vận chuyển', 'đang giao hàng', 'giao hàng thành công', 'chuyển hoàn']
+
+            i = start_idx
+            while i < len(lines):
+                line = lines[i]
+                if 'lịch sử liên hệ' in line.lower():
+                    break
+                if line.startswith('Cập nhật'):
+                    i += 1
                     continue
 
-            # Tìm timeline
-            timeline_selectors = [
-                '.timeline', '[class*="timeline"]', '[class*="Timeline"]',
-                '.history', '[class*="history"]', '.tracking-info',
-                '.order-detail', '[class*="step"]'
-            ]
+                if re.match(r'^\d{1,2}:\d{2}$', line):
+                    t_str = line
+                    d_str = lines[i+1] if i + 1 < len(lines) else ""
+                    m_str = lines[i+2] if i + 2 < len(lines) else ""
+                    advance = 3
+                    if m_str.lower() in stages:
+                        detail_msg = lines[i+3] if i + 3 < len(lines) else ""
+                        if detail_msg and not re.match(r'^\d{1,2}:\d{2}$', detail_msg):
+                            m_str = detail_msg
+                            advance = 4
 
-            for selector in timeline_selectors:
-                try:
-                    elements = await page.query_selector_all(selector)
-                    if elements:
-                        for el in elements:
-                            text = await el.inner_text()
-                            text = text.strip()
-                            if text and len(text) > 5:
-                                detail_text += '\n--- Hành trình ---\n' + text
-                                if not status_text:
-                                    lines = [l.strip() for l in text.split('\n') if l.strip()]
-                                    if lines:
-                                        status_text = lines[0][:200]
-                                break
-                except Exception:
+                    if m_str and 'lịch sử liên hệ' not in m_str.lower():
+                        timeline_items.append({
+                            'time': t_str,
+                            'date': d_str,
+                            'message': m_str
+                        })
+                    i += advance
                     continue
+                i += 1
 
-            # Fallback: lấy text từ body
+            if timeline_items:
+                # Trạng thái gần nhất chính là mốc mới nhất ở đầu danh sách hành trình
+                status_text = timeline_items[0]['message']
+                detail_text = "\n".join([f"{it['time']} {it['date']}: {it['message']}" for it in timeline_items])
+
+            # 2. Nếu timeline chưa có mốc giờ, lấy thông tin tóm tắt giữa stepper và Thông tin đơn hàng
             if not status_text:
-                try:
-                    body_text = await page.inner_text('body')
-                    lines = [l.strip() for l in body_text.split('\n')
-                             if l.strip() and len(l.strip()) > 3]
-                    status_keywords = [
-                        'giao', 'delivered', 'transit', 'shipping',
-                        'lấy hàng', 'đang giao', 'đã giao', 'thành công',
-                        'hoàn', 'chờ', 'nhận hàng', 'đang xử lý',
-                        'chuyển hoàn', 'đang vận chuyển'
-                    ]
-                    for line in lines:
-                        line_lower = line.lower()
-                        for kw in status_keywords:
-                            if kw in line_lower:
-                                status_text = line[:200]
+                summary_lines = []
+                collecting = False
+                for line in lines:
+                    if 'đang giao hàng' in line.lower():
+                        collecting = True
+                        continue
+                    if 'thông tin đơn hàng' in line.lower():
+                        break
+                    if collecting and line and len(line) > 3:
+                        if not line.startswith('Dự kiến') and not line.startswith('Tra cứu'):
+                            summary_lines.append(line)
+                if summary_lines:
+                    status_text = summary_lines[0][:200]
+                    detail_text = "\n".join(summary_lines)
+
+            # 3. Fallback: tìm qua selector
+            if not status_text:
+                for selector in ['.order-status', '.status', '[class*="status"]', '.order-info']:
+                    try:
+                        elements = await page.query_selector_all(selector)
+                        for el in elements:
+                            text = (await el.inner_text()).strip()
+                            if text and len(text) > 2 and text.lower() not in stages:
+                                status_text = text[:200]
+                                detail_text = text
                                 break
                         if status_text:
                             break
-                except Exception:
-                    pass
+                    except Exception:
+                        pass
 
             await browser.close()
 
