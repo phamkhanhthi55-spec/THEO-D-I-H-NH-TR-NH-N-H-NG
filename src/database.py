@@ -1,0 +1,337 @@
+"""
+Module quản lý cơ sở dữ liệu SQLite cho ứng dụng Theo dõi hành trình đơn hàng.
+Lưu trữ thông tin đơn hàng cục bộ trên máy tính người dùng.
+"""
+
+import sqlite3
+import os
+import shutil
+import json
+from datetime import datetime
+from pathlib import Path
+
+
+def get_data_dir():
+    """Trả về thư mục lưu dữ liệu ứng dụng, ổn định trên Windows."""
+    app_data = os.environ.get('APPDATA', os.path.expanduser('~'))
+    data_dir = os.path.join(app_data, 'TheoDoiHanhTrinhDonHang')
+    os.makedirs(data_dir, exist_ok=True)
+    return data_dir
+
+
+def get_db_path():
+    """Trả về đường dẫn file database."""
+    return os.path.join(get_data_dir(), 'orders.db')
+
+
+class DatabaseManager:
+    """Quản lý cơ sở dữ liệu SQLite."""
+
+    def __init__(self, db_path=None):
+        self.db_path = db_path or get_db_path()
+        self.conn = None
+        self._connect()
+        self._create_tables()
+
+    def _connect(self):
+        """Kết nối đến database."""
+        try:
+            self.conn = sqlite3.connect(self.db_path)
+            self.conn.row_factory = sqlite3.Row
+            self.conn.execute("PRAGMA journal_mode=WAL")
+            self.conn.execute("PRAGMA foreign_keys=ON")
+        except sqlite3.Error as e:
+            raise RuntimeError(f"Không thể kết nối cơ sở dữ liệu: {e}")
+
+    def _create_tables(self):
+        """Tạo bảng nếu chưa tồn tại và tự động cập nhật schema (migration)."""
+        try:
+            self.conn.execute("""
+                CREATE TABLE IF NOT EXISTS orders (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    account_name TEXT DEFAULT '',
+                    product_name TEXT DEFAULT '',
+                    tracking_code TEXT DEFAULT '',
+                    carrier TEXT DEFAULT '',
+                    journey_status TEXT DEFAULT '',
+                    journey_detail TEXT DEFAULT '',
+                    amount REAL DEFAULT 0,
+                    amount_text TEXT DEFAULT '',
+                    phone_last4 TEXT DEFAULT '',
+                    address TEXT DEFAULT '',
+                    extra_data TEXT DEFAULT '{}',
+                    last_query_time TEXT DEFAULT '',
+                    last_error TEXT DEFAULT '',
+                    created_at TEXT DEFAULT (datetime('now', 'localtime')),
+                    updated_at TEXT DEFAULT (datetime('now', 'localtime'))
+                )
+            """)
+            self.conn.commit()
+
+            # Migration: thêm cột address nếu DB cũ chưa có
+            try:
+                self.conn.execute("ALTER TABLE orders ADD COLUMN address TEXT DEFAULT ''")
+                self.conn.commit()
+            except sqlite3.OperationalError:
+                pass
+
+            # Migration: thêm cột extra_data nếu DB cũ chưa có
+            try:
+                self.conn.execute("ALTER TABLE orders ADD COLUMN extra_data TEXT DEFAULT '{}'")
+                self.conn.commit()
+            except sqlite3.OperationalError:
+                pass
+
+            # Bảng quản lý các cột tùy biến do người dùng thêm vào
+            self.conn.execute("""
+                CREATE TABLE IF NOT EXISTS custom_columns (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT UNIQUE NOT NULL,
+                    created_at TEXT DEFAULT (datetime('now', 'localtime'))
+                )
+            """)
+            self.conn.commit()
+        except sqlite3.Error as e:
+            raise RuntimeError(f"Không thể tạo bảng dữ liệu: {e}")
+
+    def add_order(self, account_name='', product_name='', tracking_code='',
+                  carrier='', amount=0, amount_text='', phone_last4='',
+                  address='', extra_data='{}'):
+        """Thêm đơn hàng mới. Trả về ID của đơn hàng."""
+        if isinstance(extra_data, dict):
+            extra_data = json.dumps(extra_data, ensure_ascii=False)
+        try:
+            cursor = self.conn.execute("""
+                INSERT INTO orders (account_name, product_name, tracking_code,
+                                   carrier, amount, amount_text, phone_last4,
+                                   address, extra_data)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (account_name, product_name, tracking_code,
+                  carrier, amount, amount_text, phone_last4,
+                  address, extra_data))
+            self.conn.commit()
+            return cursor.lastrowid
+        except sqlite3.Error as e:
+            raise RuntimeError(f"Không thể thêm đơn hàng: {e}")
+
+    def update_order(self, order_id, **kwargs):
+        """Cập nhật thông tin đơn hàng theo ID."""
+        allowed_fields = {
+            'account_name', 'product_name', 'tracking_code', 'carrier',
+            'journey_status', 'journey_detail', 'amount', 'amount_text',
+            'phone_last4', 'last_query_time', 'last_error', 'address', 'extra_data'
+        }
+        fields = {k: v for k, v in kwargs.items() if k in allowed_fields}
+        if not fields:
+            return
+
+        if 'extra_data' in fields and isinstance(fields['extra_data'], dict):
+            fields['extra_data'] = json.dumps(fields['extra_data'], ensure_ascii=False)
+
+        fields['updated_at'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        set_clause = ', '.join(f'{k} = ?' for k in fields)
+        values = list(fields.values()) + [order_id]
+
+        try:
+            self.conn.execute(
+                f"UPDATE orders SET {set_clause} WHERE id = ?", values
+            )
+            self.conn.commit()
+        except sqlite3.Error as e:
+            raise RuntimeError(f"Không thể cập nhật đơn hàng: {e}")
+
+    def update_journey(self, order_id, status, detail=''):
+        """Cập nhật hành trình đơn hàng sau khi tra cứu thành công.
+        Chỉ cập nhật cột journey, không ảnh hưởng các cột khác."""
+        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        try:
+            self.conn.execute("""
+                UPDATE orders SET journey_status = ?, journey_detail = ?,
+                    last_query_time = ?, last_error = '',
+                    updated_at = ?
+                WHERE id = ?
+            """, (status, detail, now, now, order_id))
+            self.conn.commit()
+        except sqlite3.Error as e:
+            raise RuntimeError(f"Không thể cập nhật hành trình: {e}")
+
+    def update_query_error(self, order_id, error_msg):
+        """Ghi nhận lỗi tra cứu. KHÔNG ghi đè trạng thái thành công cũ."""
+        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        try:
+            self.conn.execute("""
+                UPDATE orders SET last_error = ?, last_query_time = ?,
+                    updated_at = ?
+                WHERE id = ?
+            """, (error_msg, now, now, order_id))
+            self.conn.commit()
+        except sqlite3.Error as e:
+            raise RuntimeError(f"Không thể ghi nhận lỗi tra cứu: {e}")
+
+    def delete_order(self, order_id):
+        """Xóa đơn hàng theo ID."""
+        try:
+            self.conn.execute("DELETE FROM orders WHERE id = ?", (order_id,))
+            self.conn.commit()
+        except sqlite3.Error as e:
+            raise RuntimeError(f"Không thể xóa đơn hàng: {e}")
+
+    def delete_orders(self, order_ids):
+        """Xóa nhiều đơn hàng."""
+        if not order_ids:
+            return
+        placeholders = ','.join('?' * len(order_ids))
+        try:
+            self.conn.execute(
+                f"DELETE FROM orders WHERE id IN ({placeholders})", order_ids
+            )
+            self.conn.commit()
+        except sqlite3.Error as e:
+            raise RuntimeError(f"Không thể xóa đơn hàng: {e}")
+
+    def get_all_orders(self):
+        """Lấy tất cả đơn hàng."""
+        try:
+            cursor = self.conn.execute(
+                "SELECT * FROM orders ORDER BY id ASC"
+            )
+            return [dict(row) for row in cursor.fetchall()]
+        except sqlite3.Error as e:
+            raise RuntimeError(f"Không thể đọc dữ liệu: {e}")
+
+    def get_order(self, order_id):
+        """Lấy thông tin một đơn hàng."""
+        try:
+            cursor = self.conn.execute(
+                "SELECT * FROM orders WHERE id = ?", (order_id,)
+            )
+            row = cursor.fetchone()
+            return dict(row) if row else None
+        except sqlite3.Error as e:
+            raise RuntimeError(f"Không thể đọc dữ liệu: {e}")
+
+    def search_orders(self, keyword):
+        """Tìm kiếm đơn hàng theo từ khóa."""
+        keyword = f'%{keyword}%'
+        try:
+            cursor = self.conn.execute("""
+                SELECT * FROM orders
+                WHERE account_name LIKE ? OR product_name LIKE ?
+                    OR tracking_code LIKE ?
+                ORDER BY id ASC
+            """, (keyword, keyword, keyword))
+            return [dict(row) for row in cursor.fetchall()]
+        except sqlite3.Error as e:
+            raise RuntimeError(f"Không thể tìm kiếm: {e}")
+
+    def check_tracking_code_exists(self, tracking_code, exclude_id=None):
+        """Kiểm tra mã vận đơn đã tồn tại chưa."""
+        if not tracking_code:
+            return False
+        try:
+            if exclude_id:
+                cursor = self.conn.execute(
+                    "SELECT COUNT(*) FROM orders WHERE tracking_code = ? AND id != ?",
+                    (tracking_code, exclude_id)
+                )
+            else:
+                cursor = self.conn.execute(
+                    "SELECT COUNT(*) FROM orders WHERE tracking_code = ?",
+                    (tracking_code,)
+                )
+            return cursor.fetchone()[0] > 0
+        except sqlite3.Error:
+            return False
+
+    def backup_database(self, backup_path=None):
+        """Sao lưu cơ sở dữ liệu."""
+        if backup_path is None:
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            backup_dir = os.path.join(get_data_dir(), 'backups')
+            os.makedirs(backup_dir, exist_ok=True)
+            backup_path = os.path.join(backup_dir, f'orders_backup_{timestamp}.db')
+
+        try:
+            # Đóng WAL trước khi sao lưu
+            self.conn.execute("PRAGMA wal_checkpoint(FULL)")
+            shutil.copy2(self.db_path, backup_path)
+            return backup_path
+        except Exception as e:
+            raise RuntimeError(f"Không thể sao lưu: {e}")
+
+    def restore_database(self, backup_path):
+        """Khôi phục cơ sở dữ liệu từ bản sao lưu."""
+        if not os.path.exists(backup_path):
+            raise FileNotFoundError(f"Không tìm thấy file sao lưu: {backup_path}")
+
+        try:
+            self.conn.close()
+            shutil.copy2(backup_path, self.db_path)
+            self._connect()
+            return True
+        except Exception as e:
+            self._connect()  # Reconnect to original
+            raise RuntimeError(f"Không thể khôi phục: {e}")
+
+    def get_backup_list(self):
+        """Lấy danh sách các bản sao lưu."""
+        backup_dir = os.path.join(get_data_dir(), 'backups')
+        if not os.path.exists(backup_dir):
+            return []
+        files = []
+        for f in sorted(os.listdir(backup_dir), reverse=True):
+            if f.endswith('.db'):
+                path = os.path.join(backup_dir, f)
+                size = os.path.getsize(path)
+                files.append({'name': f, 'path': path, 'size': size})
+        return files
+
+    def get_custom_columns(self):
+        """Lấy danh sách các cột tùy chọn do người dùng tạo."""
+        try:
+            cursor = self.conn.execute("SELECT name FROM custom_columns ORDER BY id ASC")
+            return [row['name'] for row in cursor.fetchall()]
+        except sqlite3.Error:
+            return []
+
+    def add_custom_column(self, name):
+        """Thêm một cột tùy chọn mới."""
+        name = str(name).strip()
+        if not name:
+            raise ValueError("Tên cột không được để trống")
+        try:
+            self.conn.execute("INSERT INTO custom_columns (name) VALUES (?)", (name,))
+            self.conn.commit()
+            return True
+        except sqlite3.IntegrityError:
+            raise ValueError(f"Cột '{name}' đã tồn tại")
+        except sqlite3.Error as e:
+            raise RuntimeError(f"Không thể thêm cột tùy chọn: {e}")
+
+    def delete_custom_column(self, name):
+        """Xóa một cột tùy chọn."""
+        try:
+            self.conn.execute("DELETE FROM custom_columns WHERE name = ?", (name,))
+            self.conn.commit()
+            return True
+        except sqlite3.Error as e:
+            raise RuntimeError(f"Không thể xóa cột tùy chọn: {e}")
+
+    def update_order_extra(self, order_id, col_name, value):
+        """Cập nhật giá trị của một cột tùy chọn cho đơn hàng."""
+        order = self.get_order(order_id)
+        if not order:
+            return
+        extra_str = order.get('extra_data') or '{}'
+        try:
+            extra_dict = json.loads(extra_str)
+        except Exception:
+            extra_dict = {}
+        extra_dict[col_name] = str(value)
+        self.update_order(order_id, extra_data=extra_dict)
+
+    def close(self):
+        """Đóng kết nối database."""
+        if self.conn:
+            self.conn.close()
+            self.conn = None
