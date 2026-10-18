@@ -1515,15 +1515,17 @@ class MainWindow(QMainWindow):
                 self._update_order_cache(order_id, 'product_name', new_text)
             elif col == 3:  # Mã vận đơn
                 carrier = detect_carrier(new_text)
+                if carrier == CARRIER_UNKNOWN and new_text:
+                    carrier = CARRIER_GHN
                 self.db.update_order(order_id, tracking_code=new_text, carrier=carrier)
                 self._update_order_cache(order_id, 'tracking_code', new_text)
                 self._update_order_cache(order_id, 'carrier', carrier)
                 if carrier == CARRIER_SPX:
-                    item.setForeground(QColor('#D32F2F'))
+                    item.setForeground(QColor('#E57373'))
                 elif carrier == CARRIER_GHN:
-                    item.setForeground(QColor('#2E7D32'))
+                    item.setForeground(QColor('#43A047'))
                 else:
-                    item.setForeground(QColor('#4A3B43'))
+                    item.setForeground(QColor('#8C4A60'))
             elif col == 4:  # Hành trình di chuyển
                 self.db.update_order(order_id, journey_status=new_text)
                 self._update_order_cache(order_id, 'journey_status', new_text)
@@ -1699,19 +1701,43 @@ class MainWindow(QMainWindow):
 
             carrier = order.get('carrier', '')
             if not carrier or carrier == CARRIER_UNKNOWN:
-                # Thử nhận diện lại
                 carrier = detect_carrier(tracking)
                 if carrier == CARRIER_UNKNOWN:
-                    errors.append(
-                        f"Mã {tracking}: Chưa xác định đơn vị vận chuyển. "
-                        f"Vui lòng chọn ĐVVC cho đơn này.")
-                    continue
-                # Lưu carrier đã nhận diện
+                    carrier = CARRIER_GHN
                 self.db.update_order(oid, carrier=carrier)
+                self._update_order_cache(oid, 'carrier', carrier)
 
-            phone_last4 = order.get('phone_last4', '')
-            orders_to_track.append(
-                (oid, tracking, carrier, phone_last4))
+            phone_last4 = str(order.get('phone_last4', '') or '').strip()
+            if carrier == CARRIER_GHN and not phone_last4:
+                from PySide6.QtWidgets import QInputDialog
+                phone_input, ok = QInputDialog.getText(
+                    self,
+                    "Tra cứu Giao Hàng Nhanh (GHN)",
+                    f"Đơn hàng GHN mã: {tracking}\n\n"
+                    f"Trang Giao Hàng Nhanh bắt buộc cần Số điện thoại hoặc 4 số cuối SĐT\n"
+                    f"của người nhận hoặc người gửi để tra cứu.\n\n"
+                    f"Vui lòng nhập SĐT hoặc 4 số cuối:",
+                    QLineEdit.Normal,
+                    ""
+                )
+                if ok and phone_input.strip():
+                    phone_last4 = phone_input.strip()
+                    self.db.update_order(oid, phone_last4=phone_last4)
+                    self._update_order_cache(oid, 'phone_last4', phone_last4)
+                else:
+                    from .tracking import open_tracking_url
+                    reply = QMessageBox.question(
+                        self,
+                        "Tra cứu GHN",
+                        f"Đơn hàng GHN {tracking} chưa có số điện thoại nên không thể tự động tra cứu ngầm.\n\n"
+                        f"Bạn có muốn mở trang web GHN trên trình duyệt để tự tra cứu không?",
+                        QMessageBox.Yes | QMessageBox.No
+                    )
+                    if reply == QMessageBox.Yes:
+                        open_tracking_url(tracking, CARRIER_GHN)
+                    continue
+
+            orders_to_track.append((oid, tracking, carrier, phone_last4))
 
         return orders_to_track, errors
 

@@ -34,13 +34,12 @@ def detect_carrier(tracking_code):
     code = tracking_code.strip().upper()
 
     # SPX: mã bắt đầu bằng SPX hoặc SPXVN
-    if SPX_PATTERN.match(code):
+    if code.startswith('SPX') or SPX_PATTERN.match(code):
         return CARRIER_SPX
 
-    # GHN: Không có format cố định hoàn toàn, nhưng thường bao gồm:
-    # - Các mã chứa ký tự chữ và số hỗn hợp
-    # - Mã có thể bắt đầu bằng các ký tự khác nhau
-    # Không tự động phân loại để tránh nhầm lẫn
+    # GHN: Mã GHN bắt đầu bằng G (như GYMUKCCG, GYH6PZDC, G...), GHN, hoặc LJK
+    if code.startswith('GHN') or code.startswith('G') or code.startswith('LJK'):
+        return CARRIER_GHN
 
     return CARRIER_UNKNOWN
 

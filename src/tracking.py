@@ -198,58 +198,61 @@ async def _track_ghn_async(tracking_code, phone_last4=''):
             await page.goto(url, timeout=30000, wait_until='domcontentloaded')
 
             # Chờ trang load
-            await page.wait_for_timeout(5000)
+            await page.wait_for_timeout(3000)
 
-            # Kiểm tra nếu cần nhập SĐT
-            content = await page.content()
-            content_lower = content.lower()
+            # Trang GHN có 2 ô: 1 là mã đơn hàng, 2 là số điện thoại
+            inputs = await page.query_selector_all('input')
+            if len(inputs) > 0:
+                val0 = await inputs[0].input_value()
+                if not val0:
+                    await inputs[0].fill(tracking_code)
 
-            # Nếu trang yêu cầu xác thực SĐT
-            phone_input_selectors = [
-                'input[placeholder*="điện thoại"]',
-                'input[placeholder*="phone"]',
-                'input[placeholder*="số cuối"]',
-                'input[type="tel"]',
-            ]
+            if len(inputs) > 1:
+                if phone_last4:
+                    await inputs[1].fill(phone_last4)
+                    btn = await page.query_selector('button:has-text("Tra cứu"), button[type="submit"]')
+                    if btn:
+                        await btn.click()
+                    else:
+                        await page.keyboard.press('Enter')
+                    await page.wait_for_timeout(4000)
+                else:
+                    await browser.close()
+                    return TrackingResult(
+                        success=False,
+                        error=f"Trang Giao Hàng Nhanh bắt buộc cần Số điện thoại hoặc 4 số cuối SĐT để tra cứu {tracking_code}."
+                    )
+            else:
+                # Nếu trang chỉ có 1 ô hoặc đã tự tra cứu
+                btn = await page.query_selector('button:has-text("Tra cứu"), button[type="submit"]')
+                if btn:
+                    await btn.click()
+                    await page.wait_for_timeout(4000)
 
-            for selector in phone_input_selectors:
-                try:
-                    phone_input = await page.query_selector(selector)
-                    if phone_input and phone_last4:
-                        await phone_input.fill(phone_last4)
-                        # Tìm nút xác nhận
-                        confirm_btns = await page.query_selector_all(
-                            'button[type="submit"], button:has-text("Xác nhận"), '
-                            'button:has-text("Tra cứu"), button:has-text("Tìm")'
-                        )
-                        for btn in confirm_btns:
-                            try:
-                                await btn.click()
-                                break
-                            except Exception:
-                                continue
-                        await page.wait_for_timeout(3000)
-                        break
-                    elif phone_input and not phone_last4:
-                        await browser.close()
-                        return TrackingResult(
-                            success=False,
-                            error=f"Trang GHN yêu cầu 4 số cuối điện thoại đặt hàng để tra cứu {tracking_code}. "
-                                  f"Vui lòng nhập 4 số cuối SĐT cho đơn hàng này."
-                        )
-                except Exception:
-                    continue
+            # Kiểm tra các thông báo lỗi từ GHN
+            body_text = await page.inner_text('body')
+            body_lower = body_text.lower()
 
-            # Đọc trạng thái
-            content = await page.content()
-            content_lower = content.lower()
+            if 'thông tin không chính xác' in body_lower:
+                await browser.close()
+                return TrackingResult(
+                    success=False,
+                    error=f"Số điện thoại ({phone_last4}) không khớp với đơn hàng GHN {tracking_code}. Vui lòng kiểm tra lại SĐT người nhận/người gửi."
+                )
+
+            if 'vui lòng nhập số điện thoại' in body_lower:
+                await browser.close()
+                return TrackingResult(
+                    success=False,
+                    error=f"Trang GHN yêu cầu Số điện thoại hoặc 4 số cuối SĐT để tra cứu {tracking_code}."
+                )
 
             not_found_indicators = [
-                'không tìm thấy', 'not found', 'không tồn tại',
-                'đơn hàng không tồn tại', 'mã đơn hàng không hợp lệ'
+                'không tìm thấy đơn hàng', 'đơn hàng không tồn tại',
+                'mã đơn hàng không hợp lệ'
             ]
             for indicator in not_found_indicators:
-                if indicator in content_lower:
+                if indicator in body_lower:
                     await browser.close()
                     return TrackingResult(
                         success=False,
