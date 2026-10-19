@@ -90,6 +90,34 @@ class TestGUI(unittest.TestCase):
         self.window.search_edit.setText("")
         self.assertEqual(self.window.table.rowCount(), 2)
 
+    def test_sorting_keeps_stt_sequential(self):
+        """Kiểm tra khi sắp xếp theo bất kỳ cột nào, STT luôn từ 1 đến N liên tục."""
+        self.window.db.add_order(account_name="Charlie", product_name="Zebra Product", tracking_code="SPXVN333", carrier="SPX")
+        self.window.db.add_order(account_name="Alice", product_name="Apple Product", tracking_code="SPXVN111", carrier="SPX")
+        self.window.db.add_order(account_name="Bob", product_name="Banana Product", tracking_code="SPXVN222", carrier="SPX")
+        self.window.load_data()
+        self.assertEqual(self.window.table.rowCount(), 3)
+
+        # 1. Sắp xếp theo Tên SP (cột 2) tăng dần -> Apple, Banana, Zebra
+        self.window._on_header_section_clicked(2)
+        self.assertEqual(self.window.table.item(0, 2).text(), "Apple Product")
+        self.assertEqual(self.window.table.item(1, 2).text(), "Banana Product")
+        self.assertEqual(self.window.table.item(2, 2).text(), "Zebra Product")
+        # STT phải luôn là 1, 2, 3
+        self.assertEqual(self.window.table.item(0, 0).text(), "1")
+        self.assertEqual(self.window.table.item(1, 0).text(), "2")
+        self.assertEqual(self.window.table.item(2, 0).text(), "3")
+
+        # 2. Sắp xếp theo Tên SP (cột 2) giảm dần -> Zebra, Banana, Apple
+        self.window._on_header_section_clicked(2)
+        self.assertEqual(self.window.table.item(0, 2).text(), "Zebra Product")
+        self.assertEqual(self.window.table.item(1, 2).text(), "Banana Product")
+        self.assertEqual(self.window.table.item(2, 2).text(), "Apple Product")
+        # STT vẫn phải giữ nguyên 1, 2, 3
+        self.assertEqual(self.window.table.item(0, 0).text(), "1")
+        self.assertEqual(self.window.table.item(1, 0).text(), "2")
+        self.assertEqual(self.window.table.item(2, 0).text(), "3")
+
 
 if __name__ == '__main__':
     unittest.main()

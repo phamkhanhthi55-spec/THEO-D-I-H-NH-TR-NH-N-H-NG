@@ -654,6 +654,8 @@ class MainWindow(QMainWindow):
         self.tracking_worker = None
         self.current_filter_carrier = ''
         self.current_search_text = ''
+        self.current_sort_column = -1
+        self.current_sort_order = Qt.AscendingOrder
         self._loading_data = False
 
         self.setWindowTitle("Theo dõi hành trình đơn hàng")
@@ -866,7 +868,7 @@ class MainWindow(QMainWindow):
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.table.setAlternatingRowColors(True)
-        self.table.setSortingEnabled(True)
+        self.table.setSortingEnabled(False)
         # Cho phép chỉnh sửa trực tiếp nội dung trên từng ô
         self.table.setEditTriggers(
             QAbstractItemView.DoubleClicked |
@@ -883,6 +885,8 @@ class MainWindow(QMainWindow):
 
         # Sử dụng header tùy biến để cột STT có nền vàng pastel, các cột khác có nền hồng pastel
         custom_header = PastelHeaderView(Qt.Horizontal, self.table)
+        custom_header.setSortIndicatorShown(True)
+        custom_header.sectionClicked.connect(self._on_header_section_clicked)
         self.table.setHorizontalHeader(custom_header)
 
         # Cài đặt kích thước các cột
@@ -1188,7 +1192,85 @@ class MainWindow(QMainWindow):
                       or search in o.get('tracking_code', '').lower()]
 
         self.filtered_orders = orders
+        if getattr(self, 'current_sort_column', -1) >= 0:
+            self._sort_filtered_orders(self.current_sort_column, self.current_sort_order)
         self.refresh_table()
+
+    def _sort_filtered_orders(self, logical_index, sort_order):
+        """Sắp xếp danh sách filtered_orders theo cột đã chọn."""
+        reverse = (sort_order == Qt.DescendingOrder)
+
+        def get_sort_key(order):
+            if logical_index == 0:  # STT: sắp xếp theo ID gốc
+                return order.get('id', 0)
+            elif logical_index == 1:  # Tên acc đặt
+                return (order.get('account_name') or '').lower()
+            elif logical_index == 2:  # Tên SP
+                return (order.get('product_name') or '').lower()
+            elif logical_index == 3:  # Mã vận đơn
+                return (order.get('tracking_code') or '').lower()
+            elif logical_index == 4:  # Hành trình di chuyển
+                return (order.get('journey_status') or '').lower()
+            elif logical_index == 5:  # Số tiền: sắp xếp theo giá trị số thực tế
+                return order.get('amount') or 0.0
+            elif logical_index == 6:  # Địa chỉ
+                return (order.get('address') or '').lower()
+            elif logical_index >= 7:  # Cột tùy biến
+                header_item = self.table.horizontalHeaderItem(logical_index)
+                if header_item:
+                    col_name = header_item.text()
+                    extra = order.get('extra_data') or '{}'
+                    if isinstance(extra, str):
+                        try:
+                            import json
+                            extra_dict = json.loads(extra)
+                        except Exception:
+                            extra_dict = {}
+                    else:
+                        extra_dict = extra or {}
+                    return str(extra_dict.get(col_name, '')).lower()
+                return ''
+            return ''
+
+        self.filtered_orders.sort(key=get_sort_key, reverse=reverse)
+
+    def _on_header_section_clicked(self, logical_index):
+        """
+        Sắp xếp danh sách đơn hàng khi bấm vào tiêu đề bất kỳ cột nào.
+        Đặc biệt: Cột STT luôn giữ cố định số thứ tự từ 1 đến lớn nhất, không bị xáo trộn.
+        """
+        if logical_index == self.current_sort_column:
+            if self.current_sort_order == Qt.AscendingOrder:
+                self.current_sort_order = Qt.DescendingOrder
+            else:
+                self.current_sort_order = Qt.AscendingOrder
+        else:
+            self.current_sort_column = logical_index
+            self.current_sort_order = Qt.AscendingOrder
+
+        header = self.table.horizontalHeader()
+        header.setSortIndicatorShown(True)
+        header.setSortIndicator(self.current_sort_column, self.current_sort_order)
+
+        self._sort_filtered_orders(self.current_sort_column, self.current_sort_order)
+        self.refresh_table()
+
+        header_item = self.table.horizontalHeaderItem(logical_index)
+        col_name = header_item.text() if header_item else ""
+        direction_text = "tăng dần" if self.current_sort_order == Qt.AscendingOrder else "giảm dần"
+        self.statusBar().showMessage(
+            f"✨ Đã sắp xếp theo '{col_name}' ({direction_text}) - STT giữ nguyên từ 1 đến {len(self.filtered_orders)}",
+            2500
+        )
+
+    def _renumber_stt(self):
+        """Đảm bảo cột STT luôn hiển thị liên tục từ 1 đến số dòng lớn nhất."""
+        self._loading_data = True
+        for r in range(self.table.rowCount()):
+            stt_item = self.table.item(r, 0)
+            if stt_item:
+                stt_item.setData(Qt.DisplayRole, r + 1)
+        self._loading_data = False
 
     def _setup_column_widths(self):
         """Thiết lập chế độ co giãn và độ rộng các cột."""
@@ -1355,7 +1437,7 @@ class MainWindow(QMainWindow):
                 c_item.setForeground(QColor('#4A3B43'))
                 self.table.setItem(row, c_idx, c_item)
 
-        self.table.setSortingEnabled(True)
+        self.table.setSortingEnabled(False)
         self._loading_data = False
 
         # Cập nhật số lượng
@@ -1486,6 +1568,17 @@ class MainWindow(QMainWindow):
             if order and order.get('tracking_code') and order.get('carrier'):
                 menu.addAction("🌐 Mở trang tra cứu",
                                lambda: self._open_tracking(order))
+
+        menu.addSeparator()
+        menu_sort = menu.addMenu("🔄 Sắp xếp bảng")
+        menu_sort.addAction("Theo Hành trình di chuyển", lambda: self._on_header_section_clicked(4))
+        menu_sort.addAction("Theo Mã vận đơn", lambda: self._on_header_section_clicked(3))
+        menu_sort.addAction("Theo Tên sản phẩm", lambda: self._on_header_section_clicked(2))
+        menu_sort.addAction("Theo Tên người đặt", lambda: self._on_header_section_clicked(1))
+        menu_sort.addAction("Theo Số tiền thanh toán", lambda: self._on_header_section_clicked(5))
+        menu_sort.addAction("Theo Địa chỉ", lambda: self._on_header_section_clicked(6))
+        menu_sort.addSeparator()
+        menu_sort.addAction("Khôi phục thứ tự ban đầu", lambda: self._on_header_section_clicked(0))
 
         menu.exec(self.table.viewport().mapToGlobal(pos))
 
