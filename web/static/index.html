@@ -1,0 +1,892 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>THEO DÕI ĐƠN HÀNG - Hello Kitty Mobile</title>
+  <link rel="manifest" href="/static/manifest.json">
+  <link rel="icon" type="image/png" href="/static/icon.png">
+  <link rel="apple-touch-icon" href="/static/icon.png">
+  <meta name="theme-color" content="#FF7891">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-color: #FFF5F8;
+      --card-bg: #FFFFFF;
+      --primary: #FF7891;
+      --primary-hover: #FF5A78;
+      --primary-light: #FFEBF1;
+      --text-main: #4A3B43;
+      --text-muted: #8E7A84;
+      --accent-yellow: #FFF9D2;
+      --border-yellow: #FFE082;
+      --stt-text: #795548;
+      --border-color: #FFD6E0;
+      --spx-color: #E53935;
+      --ghn-color: #2E7D32;
+      --success-bg: #E8F5E9;
+      --success-text: #2E7D32;
+      --delivering-bg: #FFF3E0;
+      --delivering-text: #E65100;
+      --normal-bg: #F3E5F5;
+      --normal-text: #7B1FA2;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      font-family: 'Quicksand', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background-color: var(--bg-color);
+      color: var(--text-main);
+      padding: 12px;
+      padding-bottom: 90px;
+      min-height: 100vh;
+    }
+
+    /* Header Hello Kitty */
+    .header-card {
+      background: linear-gradient(135deg, #FFF8DC 0%, #FFEBF1 50%, #FFF0F5 100%);
+      border: 2px solid var(--border-yellow);
+      border-radius: 20px;
+      padding: 14px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      box-shadow: 0 4px 15px rgba(255, 120, 145, 0.12);
+      margin-bottom: 12px;
+    }
+
+    .header-kitty {
+      width: 52px;
+      height: 52px;
+      border-radius: 50%;
+      object-fit: cover;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+      background: #fff;
+    }
+
+    .header-text {
+      text-align: center;
+      flex: 1;
+      padding: 0 8px;
+    }
+
+    .header-title {
+      font-size: 17px;
+      font-weight: 700;
+      color: #D81B60;
+      letter-spacing: 0.3px;
+    }
+
+    .header-subtitle {
+      font-size: 11px;
+      color: #AD1457;
+      margin-top: 2px;
+      font-weight: 600;
+    }
+
+    /* Stats Overview */
+    .stats-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .stat-badge {
+      background: #FFFFFF;
+      border: 1.5px solid var(--border-color);
+      border-radius: 14px;
+      padding: 8px;
+      text-align: center;
+      box-shadow: 0 2px 6px rgba(255, 120, 145, 0.06);
+    }
+
+    .stat-num {
+      font-size: 16px;
+      font-weight: 700;
+      color: #C2185B;
+    }
+
+    .stat-label {
+      font-size: 10px;
+      color: var(--text-muted);
+      font-weight: 600;
+      margin-top: 2px;
+    }
+
+    /* Toolbar Actions */
+    .toolbar {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 12px;
+      overflow-x: auto;
+      padding-bottom: 2px;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 9px 14px;
+      border-radius: 14px;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      border: none;
+      transition: all 0.2s;
+      white-space: nowrap;
+      text-decoration: none;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #FF7891 0%, #FF5A78 100%);
+      color: #FFFFFF;
+      box-shadow: 0 3px 10px rgba(255, 90, 120, 0.25);
+    }
+
+    .btn-primary:active {
+      transform: scale(0.96);
+    }
+
+    .btn-white {
+      background: #FFFFFF;
+      color: #C2185B;
+      border: 1.5px solid #FFCCD5;
+    }
+
+    .btn-white:active {
+      background: #FFF0F4;
+    }
+
+    /* Search & Filter */
+    .filter-box {
+      background: #FFFFFF;
+      border: 1.5px solid var(--border-color);
+      border-radius: 16px;
+      padding: 10px;
+      margin-bottom: 14px;
+      display: flex;
+      gap: 8px;
+    }
+
+    .search-input {
+      flex: 1;
+      border: 1px solid #FFCCD5;
+      border-radius: 10px;
+      padding: 7px 10px;
+      font-size: 12px;
+      font-family: inherit;
+      outline: none;
+      color: var(--text-main);
+    }
+
+    .search-input:focus {
+      border-color: var(--primary);
+    }
+
+    .select-carrier {
+      border: 1px solid #FFCCD5;
+      border-radius: 10px;
+      padding: 7px 8px;
+      font-size: 12px;
+      font-family: inherit;
+      outline: none;
+      background: #FFF8FA;
+      color: var(--text-main);
+      font-weight: 600;
+    }
+
+    /* Progress bar */
+    .progress-container {
+      display: none;
+      background: #FFF;
+      border: 1px solid #FFE082;
+      border-radius: 12px;
+      padding: 8px 12px;
+      margin-bottom: 12px;
+    }
+
+    .progress-bar {
+      height: 6px;
+      background: #FFE082;
+      border-radius: 3px;
+      overflow: hidden;
+      margin-top: 6px;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: var(--primary);
+      width: 0%;
+      transition: width 0.3s;
+    }
+
+    /* Order Card (Mobile First) */
+    .orders-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .order-card {
+      background: var(--card-bg);
+      border: 1.5px solid var(--border-color);
+      border-radius: 18px;
+      padding: 12px 14px;
+      box-shadow: 0 3px 10px rgba(0, 0, 0, 0.03);
+      position: relative;
+      transition: all 0.2s;
+    }
+
+    .order-card.delivered {
+      border-color: #C8E6C9;
+      background: #FBFFFA;
+    }
+
+    .order-card.delivering {
+      border-color: #FFE0B2;
+      background: #FFFDF9;
+    }
+
+    .card-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+
+    .stt-badge {
+      background: var(--accent-yellow);
+      color: var(--stt-text);
+      border: 1px solid var(--border-yellow);
+      border-radius: 8px;
+      padding: 2px 8px;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .carrier-badge {
+      font-size: 11px;
+      font-weight: 700;
+      padding: 2px 7px;
+      border-radius: 6px;
+    }
+
+    .carrier-SPX {
+      background: #FFEBEE;
+      color: var(--spx-color);
+      border: 1px solid #FFCDD2;
+    }
+
+    .carrier-GHN {
+      background: #E8F5E9;
+      color: var(--ghn-color);
+      border: 1px solid #C8E6C9;
+    }
+
+    .tracking-code {
+      font-size: 13px;
+      font-weight: 700;
+      color: #333;
+      user-select: all;
+    }
+
+    .order-title {
+      font-size: 14px;
+      font-weight: 700;
+      color: #D81B60;
+      margin-bottom: 4px;
+    }
+
+    .order-acc {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+    }
+
+    /* Status badge */
+    .journey-box {
+      background: #FFF5F8;
+      border-radius: 10px;
+      padding: 7px 10px;
+      font-size: 12px;
+      margin: 8px 0;
+      border-left: 3px solid var(--primary);
+      line-height: 1.4;
+    }
+
+    .journey-box.delivered {
+      background: var(--success-bg);
+      border-left-color: var(--success-text);
+      color: var(--success-text);
+      font-weight: 600;
+    }
+
+    .journey-box.delivering {
+      background: var(--delivering-bg);
+      border-left-color: var(--delivering-text);
+      color: var(--delivering-text);
+      font-weight: 600;
+    }
+
+    .card-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-top: 8px;
+      border-top: 1px dashed #FFE0E9;
+      margin-top: 8px;
+    }
+
+    .amount-text {
+      font-size: 13px;
+      font-weight: 700;
+      color: #AD1457;
+    }
+
+    .address-tag {
+      font-size: 11px;
+      background: #FFF0F4;
+      color: #C2185B;
+      padding: 2px 7px;
+      border-radius: 6px;
+      border: 1px solid #FFD6E0;
+    }
+
+    .card-actions {
+      display: flex;
+      gap: 6px;
+    }
+
+    .btn-sm {
+      padding: 5px 9px;
+      font-size: 11px;
+      border-radius: 8px;
+      font-weight: 600;
+    }
+
+    /* Floating Navigation */
+    .mobile-nav {
+      position: fixed;
+      bottom: 12px;
+      left: 12px;
+      right: 12px;
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(8px);
+      border: 1.5px solid #FFCCD5;
+      border-radius: 20px;
+      padding: 8px 16px;
+      display: flex;
+      justify-content: space-around;
+      box-shadow: 0 4px 20px rgba(255, 120, 145, 0.2);
+      z-index: 99;
+    }
+
+    /* Modal Form */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.4);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+
+    .modal-card {
+      background: #FFFFFF;
+      border-radius: 24px;
+      border: 2px solid var(--border-yellow);
+      max-width: 440px;
+      width: 100%;
+      padding: 18px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+
+    .modal-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: #D81B60;
+      margin-bottom: 14px;
+      text-align: center;
+    }
+
+    .form-group {
+      margin-bottom: 10px;
+    }
+
+    .form-label {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text-main);
+      margin-bottom: 4px;
+      display: block;
+    }
+
+    .form-input {
+      width: 100%;
+      border: 1.5px solid #FFCCD5;
+      border-radius: 10px;
+      padding: 8px 10px;
+      font-size: 13px;
+      font-family: inherit;
+      outline: none;
+    }
+
+    .form-input:focus {
+      border-color: var(--primary);
+    }
+
+    .modal-buttons {
+      display: flex;
+      gap: 8px;
+      margin-top: 16px;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 30px 10px;
+      color: var(--text-muted);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Header Hello Kitty -->
+  <div class="header-card">
+    <img src="/static/icon.png" alt="Hello Kitty" class="header-kitty">
+    <div class="header-text">
+      <div class="header-title">🎀 THEO DÕI ĐƠN HÀNG 🎀</div>
+      <div class="header-subtitle">SPX Express & Giao Hàng Nhanh</div>
+    </div>
+    <img src="/static/icon.png" alt="Hello Kitty" class="header-kitty">
+  </div>
+
+  <!-- Stats -->
+  <div class="stats-row">
+    <div class="stat-badge">
+      <div class="stat-num" id="totalCount">0</div>
+      <div class="stat-label">Tổng đơn</div>
+    </div>
+    <div class="stat-badge">
+      <div class="stat-num" style="color: #E65100;" id="deliveringCount">0</div>
+      <div class="stat-label">Đang giao</div>
+    </div>
+    <div class="stat-badge">
+      <div class="stat-num" style="color: #2E7D32;" id="deliveredCount">0</div>
+      <div class="stat-label">Thành công</div>
+    </div>
+  </div>
+
+  <!-- Toolbar -->
+  <div class="toolbar">
+    <button class="btn btn-primary" onclick="openAddModal()">✨ ➕ Thêm đơn</button>
+    <button class="btn btn-white" onclick="trackAllOrders()">🔍 Tra cứu tất cả</button>
+    <button class="btn btn-white" onclick="loadOrders()">🔄 Làm mới</button>
+    <button class="btn btn-white" onclick="openPhoneGuide()">📱 Quét mã QR</button>
+  </div>
+
+  <!-- Search & Filter -->
+  <div class="filter-box">
+    <input type="text" id="searchInput" class="search-input" placeholder="🔍 Tìm theo mã, tên SP, người đặt..." oninput="debounceSearch()">
+    <select id="carrierSelect" class="select-carrier" onchange="loadOrders()">
+      <option value="ALL">Tất cả</option>
+      <option value="SPX">SPX</option>
+      <option value="GHN">GHN</option>
+    </select>
+  </div>
+
+  <!-- Progress bar -->
+  <div id="progressBox" class="progress-container">
+    <div style="display: flex; justify-content: space-between; font-size: 11px; font-weight: 700; color: #D81B60;">
+      <span id="progressMsg">Đang tra cứu đơn hàng...</span>
+      <span id="progressPercent">0%</span>
+    </div>
+    <div class="progress-bar">
+      <div id="progressFill" class="progress-fill"></div>
+    </div>
+  </div>
+
+  <!-- Orders List -->
+  <div id="ordersContainer" class="orders-list">
+    <div class="empty-state">Đang tải danh sách đơn hàng... 🌸</div>
+  </div>
+
+  <!-- Modal Thêm/Sửa đơn -->
+  <div id="orderModal" class="modal-overlay">
+    <div class="modal-card">
+      <div class="modal-title" id="modalTitle">🌸 THÊM ĐƠN HÀNG MỚI</div>
+      <input type="hidden" id="editOrderId">
+      
+      <div class="form-group">
+        <label class="form-label">Tên tài khoản đặt</label>
+        <input type="text" id="inputAcc" class="form-input" placeholder="Ví dụ: Shopee_01">
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Tên sản phẩm</label>
+        <input type="text" id="inputProd" class="form-input" placeholder="Ví dụ: Áo thun polo nam">
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Mã vận đơn (*)</label>
+        <input type="text" id="inputCode" class="form-input" placeholder="Ví dụ: SPXVN... hoặc GHN..." oninput="autoDetectCarrier()">
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Đơn vị vận chuyển</label>
+        <select id="inputCarrier" class="form-input" onchange="togglePhoneInput()">
+          <option value="">Tự động nhận diện</option>
+          <option value="SPX">SPX Express</option>
+          <option value="GHN">Giao Hàng Nhanh (GHN)</option>
+        </select>
+      </div>
+
+      <div class="form-group" id="phoneGroup" style="display: none;">
+        <label class="form-label">4 số cuối SĐT nhận (GHN yêu cầu)</label>
+        <input type="text" id="inputPhone" class="form-input" placeholder="Ví dụ: 6087">
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Số tiền cần thanh toán</label>
+        <input type="text" id="inputAmount" class="form-input" placeholder="Ví dụ: 199.000 ₫">
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Địa chỉ</label>
+        <select id="inputAddress" class="form-input">
+          <option value="">-- Chọn địa chỉ --</option>
+          <option value="Bình Định">Bình Định</option>
+          <option value="Quy Nhơn">Quy Nhơn</option>
+        </select>
+      </div>
+
+      <div class="modal-buttons">
+        <button class="btn btn-white" style="flex: 1;" onclick="closeModal()">Hủy</button>
+        <button class="btn btn-primary" style="flex: 1;" onclick="saveOrder()">Lưu đơn 🎀</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Hướng dẫn điện thoại & Mã QR -->
+  <div id="guideModal" class="modal-overlay">
+    <div class="modal-card" style="text-align: center;">
+      <div class="modal-title">📱 KẾT NỐI VỚI ĐIỆN THOẠI</div>
+      <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 12px;">
+        Đảm bảo điện thoại của bạn đang kết nối cùng mạng WiFi với máy tính.
+      </p>
+      
+      <div id="qrcodeBox" style="margin: 10px auto; padding: 10px; background: #fff; border-radius: 14px; display: inline-block; border: 1.5px solid var(--border-color);">
+        <img id="qrImg" src="" alt="QR Code" style="width: 170px; height: 170px; display: block;">
+      </div>
+
+      <div style="margin-top: 10px;">
+        <div style="font-size: 11px; color: var(--text-muted);">Hoặc mở trình duyệt điện thoại gõ:</div>
+        <div id="wifiUrlText" style="font-size: 14px; font-weight: 700; color: #D81B60; margin: 4px 0; user-select: all;"></div>
+      </div>
+
+      <div style="background: #FFF5F8; border-radius: 12px; padding: 10px; margin-top: 14px; text-align: left; font-size: 11px; color: #AD1457; line-height: 1.5;">
+        💡 <b>Mẹo dùng như App thật:</b><br>
+        - <b>iPhone (Safari)</b>: Bấm nút <i>Chia sẻ</i> ➔ Chọn <b>"Thêm vào MH chính"</b>.<br>
+        - <b>Android (Chrome)</b>: Bấm dấu <i>3 chấm</i> ➔ Chọn <b>"Cài đặt ứng dụng"</b>.
+      </div>
+
+      <div class="modal-buttons" style="margin-top: 14px;">
+        <button class="btn btn-primary" style="width: 100%;" onclick="closeGuideModal()">Đã hiểu 💕</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bottom Nav -->
+  <div class="mobile-nav">
+    <button class="btn btn-white btn-sm" onclick="window.scrollTo({top: 0, behavior: 'smooth'})">⬆️ Lên đầu</button>
+    <button class="btn btn-primary btn-sm" onclick="openAddModal()">✨ ➕ Thêm đơn</button>
+    <button class="btn btn-white btn-sm" onclick="trackAllOrders()">🔍 Tra cứu tất cả</button>
+  </div>
+
+  <script>
+    let searchTimer = null;
+    let currentOrders = [];
+
+    // Tự động tải danh sách đơn khi mở web
+    window.addEventListener('DOMContentLoaded', () => {
+      loadOrders();
+      loadNetworkInfo();
+      setInterval(checkTrackStatus, 3000);
+    });
+
+    function debounceSearch() {
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(loadOrders, 300);
+    }
+
+    async function loadOrders() {
+      const search = document.getElementById('searchInput').value;
+      const carrier = document.getElementById('carrierSelect').value;
+      try {
+        const res = await fetch(`/api/orders?search=${encodeURIComponent(search)}&carrier_filter=${encodeURIComponent(carrier)}`);
+        const data = await res.json();
+        currentOrders = data;
+        renderOrders(data);
+        updateStats(data);
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    function renderOrders(orders) {
+      const container = document.getElementById('ordersContainer');
+      if (!orders || orders.length === 0) {
+        container.innerHTML = `
+          <div class="empty-state">
+            <div style="font-size: 32px; margin-bottom: 8px;">🌸</div>
+            <div>Không có đơn hàng nào</div>
+          </div>`;
+        return;
+      }
+
+      container.innerHTML = orders.map(o => {
+        const status = o.journey_status || '';
+        let cardClass = '';
+        let statusClass = '';
+        const sLower = status.toLowerCase();
+
+        if (sLower.includes('giao hàng thành công') || sLower.includes('giao thành công') || sLower.includes('đã giao')) {
+          cardClass = 'delivered';
+          statusClass = 'delivered';
+        } else if (sLower.includes('đang giao')) {
+          cardClass = 'delivering';
+          statusClass = 'delivering';
+        }
+
+        const carrierName = o.carrier === 'SPX' ? 'SPX Express' : (o.carrier === 'GHN' ? 'GHN' : 'Chưa rõ');
+        const carrierClass = o.carrier === 'SPX' ? 'carrier-SPX' : (o.carrier === 'GHN' ? 'carrier-GHN' : '');
+
+        return `
+          <div class="order-card ${cardClass}" id="order-${o.id}">
+            <div class="card-top">
+              <span class="stt-badge">STT ${o.stt}</span>
+              <span class="tracking-code">${o.tracking_code || '---'}</span>
+              <span class="carrier-badge ${carrierClass}">${carrierName}</span>
+            </div>
+
+            <div class="order-title">${escapeHtml(o.product_name || '(Chưa có tên SP)')}</div>
+            <div class="order-acc">👤 Người đặt: ${escapeHtml(o.account_name || 'N/A')}</div>
+
+            <div class="journey-box ${statusClass}">
+              <b>Hành trình:</b> ${escapeHtml(status || 'Chưa tra cứu')}
+              ${o.last_error ? `<div style="color: #D32F2F; margin-top: 3px;">⚠️ ${escapeHtml(o.last_error)}</div>` : ''}
+            </div>
+
+            <div class="card-footer">
+              <div>
+                <span class="amount-text">${escapeHtml(o.amount_text || (o.amount ? o.amount.toLocaleString('vi-VN') + ' ₫' : '0 ₫'))}</span>
+                ${o.address ? `<span class="address-tag">📍 ${escapeHtml(o.address)}</span>` : ''}
+              </div>
+
+              <div class="card-actions">
+                <button class="btn btn-white btn-sm" onclick="trackSingle(${o.id})">🔍 Tra</button>
+                <button class="btn btn-white btn-sm" onclick="openEditModal(${o.id})">✏️</button>
+                <button class="btn btn-white btn-sm" style="color: #D32F2F;" onclick="deleteOrder(${o.id})">🗑️</button>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function updateStats(orders) {
+      document.getElementById('totalCount').innerText = orders.length;
+      let delivering = 0;
+      let delivered = 0;
+      orders.forEach(o => {
+        const s = (o.journey_status || '').toLowerCase();
+        if (s.includes('giao hàng thành công') || s.includes('giao thành công') || s.includes('đã giao')) {
+          delivered++;
+        } else if (s.includes('đang giao')) {
+          delivering++;
+        }
+      });
+      document.getElementById('deliveringCount').innerText = delivering;
+      document.getElementById('deliveredCount').innerText = delivered;
+    }
+
+    async function loadNetworkInfo() {
+      try {
+        const res = await fetch('/api/info');
+        const data = await res.json();
+        document.getElementById('wifiUrlText').innerText = data.url;
+        // Dùng API tạo QR Code miễn phí
+        const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(data.url)}`;
+        document.getElementById('qrImg').src = qrUrl;
+      } catch (e) {}
+    }
+
+    // Tra cứu 1 đơn
+    async function trackSingle(id) {
+      const card = document.getElementById(`order-${id}`);
+      if (card) card.style.opacity = '0.5';
+      try {
+        await fetch(`/api/track/${id}`, { method: 'POST' });
+        setTimeout(loadOrders, 2500);
+      } catch (e) {
+        alert('Lỗi tra cứu: ' + e);
+      } finally {
+        if (card) card.style.opacity = '1';
+      }
+    }
+
+    // Tra cứu toàn bộ
+    async function trackAllOrders() {
+      const box = document.getElementById('progressBox');
+      box.style.display = 'block';
+      try {
+        const res = await fetch('/api/track-all', { method: 'POST' });
+        const d = await res.json();
+        checkTrackStatus();
+      } catch (e) {
+        alert('Lỗi: ' + e);
+      }
+    }
+
+    async function checkTrackStatus() {
+      try {
+        const res = await fetch('/api/track-status');
+        const st = await res.json();
+        const box = document.getElementById('progressBox');
+        if (st.is_tracking) {
+          box.style.display = 'block';
+          document.getElementById('progressMsg').innerText = st.message;
+          const pct = st.total > 0 ? Math.round((st.current / st.total) * 100) : 0;
+          document.getElementById('progressPercent').innerText = pct + '%';
+          document.getElementById('progressFill').style.width = pct + '%';
+        } else {
+          if (box.style.display === 'block') {
+            loadOrders();
+            setTimeout(() => { box.style.display = 'none'; }, 2000);
+          }
+        }
+      } catch (e) {}
+    }
+
+    // Thêm / Sửa Modal
+    function openAddModal() {
+      document.getElementById('modalTitle').innerText = '🌸 THÊM ĐƠN HÀNG MỚI';
+      document.getElementById('editOrderId').value = '';
+      document.getElementById('inputAcc').value = '';
+      document.getElementById('inputProd').value = '';
+      document.getElementById('inputCode').value = '';
+      document.getElementById('inputCarrier').value = '';
+      document.getElementById('inputPhone').value = '';
+      document.getElementById('inputAmount').value = '';
+      document.getElementById('inputAddress').value = '';
+      togglePhoneInput();
+      document.getElementById('orderModal').style.display = 'flex';
+    }
+
+    function openEditModal(id) {
+      const order = currentOrders.find(o => o.id === id);
+      if (!order) return;
+      document.getElementById('modalTitle').innerText = '✏️ CHỈNH SỬA ĐƠN HÀNG';
+      document.getElementById('editOrderId').value = id;
+      document.getElementById('inputAcc').value = order.account_name || '';
+      document.getElementById('inputProd').value = order.product_name || '';
+      document.getElementById('inputCode').value = order.tracking_code || '';
+      document.getElementById('inputCarrier').value = order.carrier || '';
+      document.getElementById('inputPhone').value = order.phone_last4 || '';
+      document.getElementById('inputAmount').value = order.amount_text || (order.amount ? order.amount.toString() : '');
+      document.getElementById('inputAddress').value = order.address || '';
+      togglePhoneInput();
+      document.getElementById('orderModal').style.display = 'flex';
+    }
+
+    function closeModal() {
+      document.getElementById('orderModal').style.display = 'none';
+    }
+
+    function openPhoneGuide() {
+      document.getElementById('guideModal').style.display = 'flex';
+    }
+
+    function closeGuideModal() {
+      document.getElementById('guideModal').style.display = 'none';
+    }
+
+    function autoDetectCarrier() {
+      const code = document.getElementById('inputCode').value.trim();
+      const carrierSel = document.getElementById('inputCarrier');
+      if (code.toUpperCase().startsWith('SPX')) {
+        carrierSel.value = 'SPX';
+      } else if (code.toUpperCase().startsWith('G') || code.toUpperCase().startsWith('LJK')) {
+        carrierSel.value = 'GHN';
+      }
+      togglePhoneInput();
+    }
+
+    function togglePhoneInput() {
+      const carrier = document.getElementById('inputCarrier').value;
+      document.getElementById('phoneGroup').style.display = carrier === 'GHN' ? 'block' : 'none';
+    }
+
+    async function saveOrder() {
+      const editId = document.getElementById('editOrderId').value;
+      const data = {
+        account_name: document.getElementById('inputAcc').value.trim(),
+        product_name: document.getElementById('inputProd').value.trim(),
+        tracking_code: document.getElementById('inputCode').value.trim(),
+        carrier: document.getElementById('inputCarrier').value,
+        phone_last4: document.getElementById('inputPhone').value.trim(),
+        amount_text: document.getElementById('inputAmount').value.trim(),
+        address: document.getElementById('inputAddress').value
+      };
+
+      try {
+        if (editId) {
+          await fetch(`/api/orders/${editId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+          });
+        } else {
+          await fetch('/api/orders', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+          });
+        }
+        closeModal();
+        loadOrders();
+      } catch (e) {
+        alert('Lỗi lưu đơn: ' + e);
+      }
+    }
+
+    async function deleteOrder(id) {
+      if (!confirm('Bạn có chắc muốn xóa đơn hàng này?')) return;
+      try {
+        await fetch(`/api/orders/${id}`, { method: 'DELETE' });
+        loadOrders();
+      } catch (e) {
+        alert('Lỗi xóa: ' + e);
+      }
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+  </script>
+</body>
+</html>

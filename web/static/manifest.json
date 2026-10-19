@@ -1,0 +1,15 @@
+{
+  "name": "Theo Dõi Đơn Hàng",
+  "short_name": "Đơn Hàng",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#FFF5F8",
+  "theme_color": "#FF7891",
+  "icons": [
+    {
+      "src": "/static/icon.png",
+      "sizes": "192x192 512x512",
+      "type": "image/png"
+    }
+  ]
+}
