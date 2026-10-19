@@ -34,6 +34,34 @@ from .data_io import (
 )
 
 
+def get_resource_path(relative_path):
+    """Lấy đường dẫn tài nguyên chuẩn xác cho cả khi chạy mã nguồn và khi đóng gói .exe."""
+    # 1. PyInstaller MEIPASS
+    if hasattr(sys, '_MEIPASS'):
+        p = os.path.join(sys._MEIPASS, relative_path)
+        if os.path.exists(p):
+            return p
+
+    # 2. Thư mục chạy thực tế của file .exe (onedir)
+    if getattr(sys, 'frozen', False):
+        exe_dir = os.path.dirname(sys.executable)
+        for sub in ['', '_internal']:
+            p = os.path.join(exe_dir, sub, relative_path) if sub else os.path.join(exe_dir, relative_path)
+            if os.path.exists(p):
+                return p
+
+    # 3. Khi chạy code trực tiếp (development)
+    cur_file = os.path.abspath(__file__)
+    src_dir = os.path.dirname(cur_file)
+    project_root = os.path.dirname(src_dir)
+    for base in [project_root, src_dir, os.path.abspath('.')]:
+        p = os.path.join(base, relative_path)
+        if os.path.exists(p):
+            return p
+
+    return os.path.join(project_root, relative_path)
+
+
 # ============================================================
 # Worker thread cho tra cứu vận đơn (không block UI)
 # ============================================================
@@ -677,11 +705,12 @@ class MainWindow(QMainWindow):
                 pass
 
     def _set_app_icon(self):
-        """Thiết lập icon ứng dụng."""
-        icon_path = os.path.join(os.path.dirname(os.path.dirname(__file__)),
-                                 'resources', 'icon.png')
-        if os.path.exists(icon_path):
-            self.setWindowIcon(QIcon(icon_path))
+        """Thiết lập icon ứng dụng Hello Kitty."""
+        for name in ['hello_kitty.ico', 'hello_kitty.png', 'icon.ico', 'icon.png']:
+            p = get_resource_path(os.path.join('resources', name))
+            if os.path.exists(p):
+                self.setWindowIcon(QIcon(p))
+                break
 
     def setup_ui(self):
         """Thiết lập giao diện với tone màu hồng pastel - trắng dễ thương & Hello Kitty."""
@@ -699,8 +728,7 @@ class MainWindow(QMainWindow):
         header_layout.setContentsMargins(15, 8, 15, 8)
         header_layout.setAlignment(Qt.AlignCenter)
 
-        kitty_path = os.path.join(os.path.dirname(os.path.dirname(__file__)),
-                                  'resources', 'hello_kitty.png')
+        kitty_path = get_resource_path(os.path.join('resources', 'hello_kitty.png'))
 
         # Hello Kitty sticker bên trái
         if os.path.exists(kitty_path):
@@ -1194,13 +1222,43 @@ class MainWindow(QMainWindow):
         self.filtered_orders = orders
         if getattr(self, 'current_sort_column', -1) >= 0:
             self._sort_filtered_orders(self.current_sort_column, self.current_sort_order)
+        else:
+            # Tự động đẩy 'đang giao hàng' xuống kề cuối, 'giao hàng thành công' xuống cuối cùng
+            g0 = [o for o in self.filtered_orders if self._get_status_priority(o.get('journey_status', '')) == 0]
+            g1 = [o for o in self.filtered_orders if self._get_status_priority(o.get('journey_status', '')) == 1]
+            g2 = [o for o in self.filtered_orders if self._get_status_priority(o.get('journey_status', '')) == 2]
+            g0.sort(key=lambda o: o.get('id', 0))
+            g1.sort(key=lambda o: o.get('id', 0))
+            g2.sort(key=lambda o: o.get('id', 0))
+            self.filtered_orders = g0 + g1 + g2
         self.refresh_table()
 
+    @staticmethod
+    def _get_status_priority(journey_status):
+        """
+        Quy tắc độ ưu tiên hành trình đơn hàng:
+        - Nhóm 0: Đơn hàng bình thường / đang xử lý / đang trung chuyển / chưa tra cứu -> ở TRÊN CÙNG
+        - Nhóm 1: 'Đang giao hàng' -> ĐẨY XUỐNG KỀ CUỐI
+        - Nhóm 2: 'Giao hàng thành công' -> ĐẨY XUỐNG CUỐI CÙNG
+        """
+        if not journey_status:
+            return 0
+        s = str(journey_status).strip().lower()
+        if any(w in s for w in ["giao hàng thành công", "giao thành công", "đã giao thành công", "đã giao"]):
+            return 2
+        if any(w in s for w in ["đang giao hàng", "đang giao", "nhân viên đang giao", "đang đi giao"]):
+            return 1
+        return 0
+
     def _sort_filtered_orders(self, logical_index, sort_order):
-        """Sắp xếp danh sách filtered_orders theo cột đã chọn."""
+        """Sắp xếp danh sách filtered_orders theo cột đã chọn, đồng thời luôn tuân thủ:
+        - Đơn hàng thông thường ở trên
+        - 'Đang giao hàng' luôn ở kề cuối
+        - 'Giao hàng thành công' luôn ở cuối cùng
+        """
         reverse = (sort_order == Qt.DescendingOrder)
 
-        def get_sort_key(order):
+        def get_col_key(order):
             if logical_index == 0:  # STT: sắp xếp theo ID gốc
                 return order.get('id', 0)
             elif logical_index == 1:  # Tên acc đặt
@@ -1232,7 +1290,19 @@ class MainWindow(QMainWindow):
                 return ''
             return ''
 
-        self.filtered_orders.sort(key=get_sort_key, reverse=reverse)
+        # Tách thành 3 nhóm theo yêu cầu:
+        # Nhóm 0: Đơn thông thường
+        # Nhóm 1: 'Đang giao hàng' (kề cuối)
+        # Nhóm 2: 'Giao hàng thành công' (cuối cùng)
+        group_0 = [o for o in self.filtered_orders if self._get_status_priority(o.get('journey_status', '')) == 0]
+        group_1 = [o for o in self.filtered_orders if self._get_status_priority(o.get('journey_status', '')) == 1]
+        group_2 = [o for o in self.filtered_orders if self._get_status_priority(o.get('journey_status', '')) == 2]
+
+        group_0.sort(key=get_col_key, reverse=reverse)
+        group_1.sort(key=get_col_key, reverse=reverse)
+        group_2.sort(key=get_col_key, reverse=reverse)
+
+        self.filtered_orders = group_0 + group_1 + group_2
 
     def _on_header_section_clicked(self, logical_index):
         """
@@ -1935,8 +2005,8 @@ class MainWindow(QMainWindow):
                     order['last_error'] = error
                 break
 
-        # Refresh table
-        self.refresh_table()
+        # Cập nhật và tự động sắp xếp lại vị trí đơn theo trạng thái mới
+        self.apply_filters()
 
     def _on_tracking_finished(self, success_count, fail_count):
         """Kết thúc tra cứu."""

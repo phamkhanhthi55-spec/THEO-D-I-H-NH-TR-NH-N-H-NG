@@ -118,6 +118,42 @@ class TestGUI(unittest.TestCase):
         self.assertEqual(self.window.table.item(1, 0).text(), "2")
         self.assertEqual(self.window.table.item(2, 0).text(), "3")
 
+    def test_delivery_status_priority_ordering(self):
+        """Kiểm tra:
+        - Đơn thông thường ở trên cùng.
+        - Đơn 'đang giao hàng' bị đẩy xuống kề cuối.
+        - Đơn 'giao hàng thành công' bị đẩy xuống cuối cùng.
+        - STT vẫn liên tục 1, 2, 3, 4.
+        """
+        id1 = self.window.db.add_order(account_name="Acc1", product_name="Đơn giao xong", tracking_code="SPX01", carrier="SPX")
+        self.window.db.update_journey(id1, "Giao hàng thành công", "Đã giao cho khách")
+
+        id2 = self.window.db.add_order(account_name="Acc2", product_name="Đơn đang đi", tracking_code="SPX02", carrier="SPX")
+        self.window.db.update_journey(id2, "Đang trung chuyển", "Kho phân loại")
+
+        id3 = self.window.db.add_order(account_name="Acc3", product_name="Đơn đang ship", tracking_code="SPX03", carrier="SPX")
+        self.window.db.update_journey(id3, "Đang giao hàng", "Shipper đang giao")
+
+        id4 = self.window.db.add_order(account_name="Acc4", product_name="Đơn mới", tracking_code="SPX04", carrier="SPX")
+
+        self.window.load_data()
+        self.assertEqual(self.window.table.rowCount(), 4)
+
+        # 2 đơn thông thường phải ở 2 hàng đầu (row 0, 1)
+        first_two = [self.window.table.item(0, 2).text(), self.window.table.item(1, 2).text()]
+        self.assertIn("Đơn đang đi", first_two)
+        self.assertIn("Đơn mới", first_two)
+
+        # Hàng kề cuối (row 2) phải là 'Đang giao hàng'
+        self.assertEqual(self.window.table.item(2, 2).text(), "Đơn đang ship")
+
+        # Hàng cuối cùng (row 3) phải là 'Giao hàng thành công'
+        self.assertEqual(self.window.table.item(3, 2).text(), "Đơn giao xong")
+
+        # STT phải luôn là 1, 2, 3, 4
+        for r in range(4):
+            self.assertEqual(self.window.table.item(r, 0).text(), str(r + 1))
+
 
 if __name__ == '__main__':
     unittest.main()
