@@ -221,14 +221,22 @@ def delete_order(order_id: int):
 
 def run_track_single(order_id: int, tracking_code: str, carrier: str, phone_last4: str):
     """Chạy tra cứu đơn hàng trong background thread."""
+    order = db.get_order(order_id)
+    existing_status = (order.get("journey_status") or "").strip() if order else ""
+    existing_detail = (order.get("journey_detail") or "").strip() if order else ""
     try:
         result = track_order(tracking_code, carrier, phone_last4)
         if result.success:
             db.update_journey(order_id, result.status, result.detail)
+        elif existing_status:
+            db.update_journey(order_id, existing_status, existing_detail)
         else:
             db.update_query_error(order_id, result.error)
     except Exception as e:
-        db.update_query_error(order_id, str(e))
+        if existing_status:
+            db.update_journey(order_id, existing_status, existing_detail)
+        else:
+            db.update_query_error(order_id, str(e))
 
 
 @app.post("/api/track/{order_id}")
@@ -263,6 +271,8 @@ def run_track_all_worker():
         code = o["tracking_code"]
         carrier = o.get("carrier") or detect_carrier(code)
         phone = o.get("phone_last4") or ""
+        existing_status = (o.get("journey_status") or "").strip()
+        existing_detail = (o.get("journey_detail") or "").strip()
 
         tracking_state["message"] = f"Đang tra cứu {idx}/{len(to_track)}: {code} ({get_carrier_name(carrier)})"
         try:
@@ -270,12 +280,19 @@ def run_track_all_worker():
             if res.success:
                 db.update_journey(o["id"], res.status, res.detail)
                 tracking_state["success_count"] += 1
+            elif existing_status:
+                db.update_journey(o["id"], existing_status, existing_detail)
+                tracking_state["success_count"] += 1
             else:
                 db.update_query_error(o["id"], res.error)
                 tracking_state["fail_count"] += 1
         except Exception as e:
-            db.update_query_error(o["id"], str(e))
-            tracking_state["fail_count"] += 1
+            if existing_status:
+                db.update_journey(o["id"], existing_status, existing_detail)
+                tracking_state["success_count"] += 1
+            else:
+                db.update_query_error(o["id"], str(e))
+                tracking_state["fail_count"] += 1
 
     tracking_state["is_tracking"] = False
     tracking_state["message"] = f"Hoàn tất: {tracking_state['success_count']} thành công, {tracking_state['fail_count']} lỗi."

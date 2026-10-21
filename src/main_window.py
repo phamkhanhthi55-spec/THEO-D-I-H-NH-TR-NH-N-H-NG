@@ -87,9 +87,16 @@ class TrackingWorker(QThread):
         success_count = 0
         fail_count = 0
 
-        for idx, (order_id, tracking_code, carrier, phone_last4) in enumerate(self.orders_to_track):
+        for idx, item in enumerate(self.orders_to_track):
             if self._cancelled:
                 break
+
+            order_id = item[0]
+            tracking_code = item[1]
+            carrier = item[2]
+            phone_last4 = item[3] if len(item) > 3 else ''
+            existing_status = item[4] if len(item) > 4 else ''
+            existing_detail = item[5] if len(item) > 5 else ''
 
             self.progress.emit(idx + 1, total,
                                f"Đang tra cứu {tracking_code} ({idx+1}/{total})...")
@@ -100,14 +107,25 @@ class TrackingWorker(QThread):
                     success_count += 1
                     self.result.emit(order_id, True, result.status,
                                     result.detail, '')
+                elif existing_status:
+                    # Đơn hàng đã có hành trình trước đó, nếu lần này chưa có cập nhật mới từ hãng
+                    # hoặc trạng thái dậm chân tại chỗ: vẫn bảo lưu trạng thái thành công và cập nhật giờ tra cứu
+                    success_count += 1
+                    self.result.emit(order_id, True, existing_status,
+                                    existing_detail, '')
                 else:
                     fail_count += 1
                     self.result.emit(order_id, False, '', '',
                                     result.error)
             except Exception as e:
-                fail_count += 1
-                self.result.emit(order_id, False, '', '',
-                                f"Lỗi: {str(e)[:200]}")
+                if existing_status:
+                    success_count += 1
+                    self.result.emit(order_id, True, existing_status,
+                                    existing_detail, '')
+                else:
+                    fail_count += 1
+                    self.result.emit(order_id, False, '', '',
+                                    f"Lỗi: {str(e)[:200]}")
 
         self.finished_all.emit(success_count, fail_count)
 
@@ -1900,7 +1918,9 @@ class MainWindow(QMainWindow):
                         open_tracking_url(tracking, CARRIER_GHN)
                     continue
 
-            orders_to_track.append((oid, tracking, carrier, phone_last4))
+            existing_status = str(order.get('journey_status', '') or '').strip()
+            existing_detail = str(order.get('journey_detail', '') or '').strip()
+            orders_to_track.append((oid, tracking, carrier, phone_last4, existing_status, existing_detail))
 
         return orders_to_track, errors
 

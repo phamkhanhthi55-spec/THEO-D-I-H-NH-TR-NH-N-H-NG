@@ -45,12 +45,21 @@ async def _track_spx_async(tracking_code):
 
     try:
         async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True)
+            browser = await p.chromium.launch(
+                headless=True,
+                args=[
+                    '--disable-blink-features=AutomationControlled',
+                    '--no-sandbox',
+                    '--disable-setuid-sandbox'
+                ]
+            )
             context = await browser.new_context(
                 locale='vi-VN',
-                viewport={'width': 1400, 'height': 900}
+                viewport={'width': 1400, 'height': 900},
+                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
             )
             page = await context.new_page()
+            await page.add_init_script("delete Object.getPrototypeOf(navigator).webdriver")
 
             # Truy cập trang tracking SPX (SPX nhận mã trực tiếp sau dấu ?, không dùng trackingNo=)
             await page.goto(
@@ -62,21 +71,22 @@ async def _track_spx_async(tracking_code):
             # Chờ trang load
             await page.wait_for_timeout(3000)
 
-            # Đảm bảo ô input có đúng mã vận đơn thuần túy (không dính chữ thừa)
+            # Đảm bảo ô input có đúng mã vận đơn thuần túy và kích hoạt tra cứu
             try:
                 inp = await page.query_selector('input')
                 if inp:
                     current_val = await inp.input_value()
                     if current_val != tracking_code:
                         await inp.fill(tracking_code)
-
-                # Bấm nút Theo dõi nếu có
-                btn = await page.query_selector('button:has-text("Theo dõi"), .track-btn, button[type="submit"]')
-                if btn:
-                    await btn.click()
-                else:
+                    await inp.focus()
                     await page.keyboard.press('Enter')
-                await page.wait_for_timeout(4000)
+                else:
+                    btn = await page.query_selector('button:has-text("Theo dõi"), .track-btn, button[type="submit"]')
+                    if btn:
+                        await btn.click()
+                    else:
+                        await page.keyboard.press('Enter')
+                await page.wait_for_timeout(5000)
             except Exception:
                 pass
 
@@ -186,12 +196,21 @@ async def _track_ghn_async(tracking_code, phone_last4=''):
 
     try:
         async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True)
+            browser = await p.chromium.launch(
+                headless=True,
+                args=[
+                    '--disable-blink-features=AutomationControlled',
+                    '--no-sandbox',
+                    '--disable-setuid-sandbox'
+                ]
+            )
             context = await browser.new_context(
                 locale='vi-VN',
-                viewport={'width': 1400, 'height': 900}
+                viewport={'width': 1400, 'height': 900},
+                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
             )
             page = await context.new_page()
+            await page.add_init_script("delete Object.getPrototypeOf(navigator).webdriver")
 
             # Truy cập trang tracking GHN
             url = f'https://donhang.ghn.vn/?order_code={tracking_code}'
