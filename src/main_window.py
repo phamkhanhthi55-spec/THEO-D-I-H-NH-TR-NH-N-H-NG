@@ -656,14 +656,21 @@ class PastelHeaderView(QHeaderView):
             font.setPointSize(10)
             painter.setFont(font)
             text = self.model().headerData(logicalIndex, self.orientation(), Qt.DisplayRole)
-            text_rect = rect.adjusted(8, 0, -8, 0)
+            if logicalIndex == 4:
+                # Dành khoảng trống bên phải cho nút "🔃 Sắp xếp"
+                text_rect = rect.adjusted(8, 0, -100, 0)
+            else:
+                text_rect = rect.adjusted(8, 0, -8, 0)
             painter.drawText(text_rect, Qt.AlignVCenter | Qt.AlignLeft, str(text) if text else "")
 
         # Vẽ mũi tên sắp xếp nếu cột này đang được sort
         if self.isSortIndicatorShown() and self.sortIndicatorSection() == logicalIndex:
             arrow = " ▲" if self.sortIndicatorOrder() == Qt.AscendingOrder else " ▼"
             painter.setPen(QColor("#795548") if logicalIndex == 0 else QColor("#FFFFFF"))
-            arrow_rect = rect.adjusted(0, 0, -6, 0)
+            if logicalIndex == 4:
+                arrow_rect = rect.adjusted(0, 0, -102, 0)
+            else:
+                arrow_rect = rect.adjusted(0, 0, -6, 0)
             painter.drawText(arrow_rect, Qt.AlignVCenter | Qt.AlignRight, arrow)
 
         painter.restore()
@@ -716,11 +723,42 @@ class MainWindow(QMainWindow):
 
     def showEvent(self, event):
         super().showEvent(event)
+        self._update_header_sort_button_geometry()
         if sys.platform == 'win32':
             try:
                 set_window_titlebar_pastel_yellow(int(self.winId()))
             except Exception:
                 pass
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._update_header_sort_button_geometry()
+
+    def _update_header_sort_button_geometry(self, *args):
+        """Định vị nút sắp xếp nằm ngay trên tiêu đề cột Hành trình di chuyển."""
+        if not hasattr(self, 'btn_sort_in_header') or not hasattr(self, 'table'):
+            return
+        header = self.table.horizontalHeader()
+        col = self.COL_JOURNEY
+        if col >= header.count() or header.isSectionHidden(col):
+            self.btn_sort_in_header.hide()
+            return
+
+        x = header.sectionViewportPosition(col)
+        w = header.sectionSize(col)
+        h = header.height()
+
+        btn_w = 88
+        btn_h = min(24, max(20, h - 8))
+        btn_x = x + w - btn_w - 8
+        btn_y = (h - btn_h) // 2
+
+        if btn_x < x + 10 or w < 120:
+            self.btn_sort_in_header.hide()
+        else:
+            self.btn_sort_in_header.setGeometry(btn_x, btn_y, btn_w, btn_h)
+            self.btn_sort_in_header.show()
+            self.btn_sort_in_header.raise_()
 
     def _set_app_icon(self):
         """Thiết lập icon ứng dụng Hello Kitty."""
@@ -898,6 +936,38 @@ class MainWindow(QMainWindow):
         self.filter_status.currentIndexChanged.connect(self.on_filter_changed)
         filter_layout.addWidget(self.filter_status)
 
+        # Nút sắp xếp theo hành trình trên thanh công cụ
+        self.btn_sort_journey = QPushButton("🔃 Sắp xếp theo hành trình")
+        self.btn_sort_journey.setCursor(Qt.PointingHandCursor)
+        self.btn_sort_journey.setToolTip(
+            "Nhấn để sắp xếp lại danh sách theo hành trình di chuyển:\n"
+            "• Đơn thông thường / trung chuyển ở trên cùng\n"
+            "• 'Đang giao hàng' ở kề cuối\n"
+            "• 'Giao hàng thành công' ở cuối cùng\n"
+            "• Cột STT luôn giữ từ 1 đến N liên tục"
+        )
+        self.btn_sort_journey.setStyleSheet("""
+            QPushButton {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #FFF0F5, stop:1 #FFE4EC);
+                color: #C2185B;
+                border: 1.5px solid #FF8DA1;
+                border-radius: 8px;
+                padding: 4px 12px;
+                font-weight: bold;
+                font-size: 11px;
+            }
+            QPushButton:hover {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #FFE4EC, stop:1 #FFCCD7);
+                border-color: #D81B60;
+                color: #880E4F;
+            }
+            QPushButton:pressed {
+                background: #FFB6C1;
+            }
+        """)
+        self.btn_sort_journey.clicked.connect(self.sort_by_journey)
+        filter_layout.addWidget(self.btn_sort_journey)
+
         filter_layout.addStretch()
 
         self.count_label = QLabel("Tổng: 0 đơn")
@@ -934,6 +1004,41 @@ class MainWindow(QMainWindow):
         custom_header.setSortIndicatorShown(True)
         custom_header.sectionClicked.connect(self._on_header_section_clicked)
         self.table.setHorizontalHeader(custom_header)
+
+        # Tạo nút Sắp xếp ngay tại tiêu đề cột Hành trình di chuyển
+        self.btn_sort_in_header = QPushButton("🔃 Sắp xếp", custom_header)
+        self.btn_sort_in_header.setCursor(Qt.PointingHandCursor)
+        self.btn_sort_in_header.setToolTip(
+            "Nhấn để sắp xếp lại thứ tự theo hành trình di chuyển:\n"
+            "• Đơn thông thường / trung chuyển ở trên cùng\n"
+            "• 'Đang giao hàng' ở kề cuối\n"
+            "• 'Giao hàng thành công' ở cuối cùng\n"
+            "• Cột STT luôn giữ từ 1 đến N liên tục"
+        )
+        self.btn_sort_in_header.setStyleSheet("""
+            QPushButton {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #FFF5F8, stop:1 #FFE4EC);
+                color: #C2185B;
+                border: 1.5px solid #FF8DA1;
+                border-radius: 11px;
+                padding: 2px 8px;
+                font-weight: bold;
+                font-size: 11px;
+            }
+            QPushButton:hover {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #FFE4EC, stop:1 #FFCCD7);
+                border-color: #D81B60;
+                color: #880E4F;
+            }
+            QPushButton:pressed {
+                background-color: #FFB6C1;
+            }
+        """)
+        self.btn_sort_in_header.clicked.connect(self.sort_by_journey)
+
+        custom_header.sectionResized.connect(self._update_header_sort_button_geometry)
+        custom_header.geometriesChanged.connect(self._update_header_sort_button_geometry)
+        self.table.horizontalScrollBar().valueChanged.connect(self._update_header_sort_button_geometry)
 
         # Cài đặt kích thước các cột
         self._setup_column_widths()
@@ -1240,16 +1345,36 @@ class MainWindow(QMainWindow):
         self.filtered_orders = orders
         if getattr(self, 'current_sort_column', -1) >= 0:
             self._sort_filtered_orders(self.current_sort_column, self.current_sort_order)
-        else:
-            # Tự động đẩy 'đang giao hàng' xuống kề cuối, 'giao hàng thành công' xuống cuối cùng
-            g0 = [o for o in self.filtered_orders if self._get_status_priority(o.get('journey_status', '')) == 0]
-            g1 = [o for o in self.filtered_orders if self._get_status_priority(o.get('journey_status', '')) == 1]
-            g2 = [o for o in self.filtered_orders if self._get_status_priority(o.get('journey_status', '')) == 2]
-            g0.sort(key=lambda o: o.get('id', 0))
-            g1.sort(key=lambda o: o.get('id', 0))
-            g2.sort(key=lambda o: o.get('id', 0))
-            self.filtered_orders = g0 + g1 + g2
         self.refresh_table()
+
+    def sort_by_journey(self):
+        """Sắp xếp lại thứ tự danh sách đơn hàng theo hành trình di chuyển:
+        - Đơn hàng thông thường / đang xử lý / trung chuyển ở trên cùng
+        - 'Đang giao hàng' ở kề cuối
+        - 'Giao hàng thành công' ở cuối cùng
+        - Cột STT tự động đánh số liên tục từ 1 đến N
+        """
+        g0 = [o for o in self.filtered_orders if self._get_status_priority(o.get('journey_status', '')) == 0]
+        g1 = [o for o in self.filtered_orders if self._get_status_priority(o.get('journey_status', '')) == 1]
+        g2 = [o for o in self.filtered_orders if self._get_status_priority(o.get('journey_status', '')) == 2]
+
+        g0.sort(key=lambda o: o.get('id', 0))
+        g1.sort(key=lambda o: o.get('id', 0))
+        g2.sort(key=lambda o: o.get('id', 0))
+
+        self.filtered_orders = g0 + g1 + g2
+        self.current_sort_column = self.COL_JOURNEY
+        self.current_sort_order = Qt.AscendingOrder
+
+        header = self.table.horizontalHeader()
+        header.setSortIndicatorShown(True)
+        header.setSortIndicator(self.COL_JOURNEY, Qt.AscendingOrder)
+
+        self.refresh_table()
+
+        msg = f"✨ Đã sắp xếp theo hành trình: {len(g0)} đơn đang xử lý, {len(g1)} đang giao hàng, {len(g2)} đã giao thành công (STT 1..{len(self.filtered_orders)})"
+        self.status_label.setText(msg)
+        self.statusBar().showMessage(msg, 5000)
 
     @staticmethod
     def _get_status_priority(journey_status):
@@ -1327,6 +1452,9 @@ class MainWindow(QMainWindow):
         Sắp xếp danh sách đơn hàng khi bấm vào tiêu đề bất kỳ cột nào.
         Đặc biệt: Cột STT luôn giữ cố định số thứ tự từ 1 đến lớn nhất, không bị xáo trộn.
         """
+        if logical_index == self.COL_JOURNEY:
+            self.sort_by_journey()
+            return
         if logical_index == self.current_sort_column:
             if self.current_sort_order == Qt.AscendingOrder:
                 self.current_sort_order = Qt.DescendingOrder
@@ -1384,6 +1512,8 @@ class MainWindow(QMainWindow):
             self.table.setColumnWidth(6, 140)
         for c in range(7, self.table.columnCount()):
             self.table.setColumnWidth(c, 140)
+
+        self._update_header_sort_button_geometry()
 
     def refresh_table(self):
         """Cập nhật bảng hiển thị."""
@@ -1535,6 +1665,8 @@ class MainWindow(QMainWindow):
             self.count_label.setText(f"Hiển thị: {showing}/{total} đơn")
         else:
             self.count_label.setText(f"Tổng: {total} đơn")
+
+        self._update_header_sort_button_geometry()
 
     def get_selected_order_ids(self):
         """Lấy danh sách ID đơn hàng đã chọn."""
@@ -2014,7 +2146,7 @@ class MainWindow(QMainWindow):
         except Exception as e:
             print(f"Error updating order {order_id}: {e}")
 
-        # Cập nhật dữ liệu trong bộ nhớ
+        # Cập nhật dữ liệu trong bộ nhớ - GIỮ NGUYÊN VỊ TRÍ, TUYỆT ĐỐI KHÔNG TỰ ĐỘNG SẮP XẾP LẠI
         for order in self.all_orders:
             if order['id'] == order_id:
                 if success:
@@ -2025,13 +2157,70 @@ class MainWindow(QMainWindow):
                     order['last_error'] = error
                 break
 
-        # Cập nhật và tự động sắp xếp lại vị trí đơn theo trạng thái mới
-        self.apply_filters()
+        for order in self.filtered_orders:
+            if order['id'] == order_id:
+                if success:
+                    order['journey_status'] = status
+                    order['journey_detail'] = detail
+                    order['last_error'] = ''
+                else:
+                    order['last_error'] = error
+                break
+
+        # Cập nhật trực tiếp nội dung ô tại đúng hàng đó mà KHÔNG làm thay đổi vị trí
+        self._update_table_row_for_order(order_id)
+
+    def _update_table_row_for_order(self, order_id):
+        """Cập nhật nội dung hiển thị của 1 đơn hàng tại đúng hàng đó mà KHÔNG thay đổi vị trí."""
+        self._loading_data = True
+        try:
+            for row in range(self.table.rowCount()):
+                stt_item = self.table.item(row, 0)
+                if stt_item and stt_item.data(Qt.UserRole) == order_id:
+                    order = None
+                    for o in self.filtered_orders:
+                        if o['id'] == order_id:
+                            order = o
+                            break
+                    if not order:
+                        return
+
+                    # Cập nhật ô Hành trình di chuyển (cột 4)
+                    journey = order.get('journey_status', '')
+                    journey_item = self.table.item(row, self.COL_JOURNEY)
+                    if not journey_item:
+                        journey_item = QTableWidgetItem(journey)
+                        self.table.setItem(row, self.COL_JOURNEY, journey_item)
+                    else:
+                        journey_item.setText(journey)
+
+                    journey_item.setForeground(QColor('#4A3B43'))
+                    tooltip = ""
+                    if journey:
+                        tooltip = (f"Trạng thái: {journey}\n"
+                                   f"Tra cứu lúc: {order.get('last_query_time', 'N/A')}")
+                    if order.get('last_error'):
+                        tooltip = (tooltip + "\n" if tooltip else "") + f"⚠️ Lỗi: {order['last_error']}"
+                    journey_item.setToolTip(tooltip)
+
+                    # Cập nhật màu mã vận đơn theo đơn vị vận chuyển (cột 3)
+                    tracking_item = self.table.item(row, self.COL_TRACKING)
+                    if tracking_item:
+                        carrier = order.get('carrier', '')
+                        if carrier == CARRIER_SPX:
+                            tracking_item.setForeground(QColor('#D32F2F'))
+                        elif carrier == CARRIER_GHN:
+                            tracking_item.setForeground(QColor('#2E7D32'))
+                        else:
+                            tracking_item.setForeground(QColor('#4A3B43'))
+                    break
+        finally:
+            self._loading_data = False
 
     def _on_tracking_finished(self, success_count, fail_count):
         """Kết thúc tra cứu."""
         self._set_tracking_ui(False)
-        self.load_data()
+        # Giữ nguyên vị trí các đơn hàng sau khi tra cứu xong, KHÔNG gọi load_data() gây xáo trộn
 
         if fail_count > 0:
             msg = f"⚠️ Tra cứu xong: {success_count} thành công, {fail_count} thất bại"

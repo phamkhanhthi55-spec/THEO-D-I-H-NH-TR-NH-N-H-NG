@@ -105,9 +105,9 @@ def get_info():
 
 
 @app.get("/api/orders")
-def list_orders(search: str = "", carrier_filter: str = "ALL"):
+def list_orders(search: str = "", carrier_filter: str = "ALL", sort_by_journey: bool = False):
     """
-    Lấy danh sách đơn hàng đã được phân loại:
+    Lấy danh sách đơn hàng. Nếu sort_by_journey=True:
     - Đơn thường ở trên
     - 'Đang giao hàng' kề cuối
     - 'Giao hàng thành công' dưới cùng
@@ -139,17 +139,20 @@ def list_orders(search: str = "", carrier_filter: str = "ALL"):
 
         filtered.append(d)
 
-    # Phân nhóm theo thứ tự ưu tiên
-    g0 = [o for o in filtered if get_status_priority(o.get("journey_status", "")) == 0]
-    g1 = [o for o in filtered if get_status_priority(o.get("journey_status", "")) == 1]
-    g2 = [o for o in filtered if get_status_priority(o.get("journey_status", "")) == 2]
+    if sort_by_journey:
+        # Phân nhóm theo thứ tự ưu tiên
+        g0 = [o for o in filtered if get_status_priority(o.get("journey_status", "")) == 0]
+        g1 = [o for o in filtered if get_status_priority(o.get("journey_status", "")) == 1]
+        g2 = [o for o in filtered if get_status_priority(o.get("journey_status", "")) == 2]
 
-    # Sắp xếp nội bộ từng nhóm theo ID
-    g0.sort(key=lambda x: x.get("id", 0))
-    g1.sort(key=lambda x: x.get("id", 0))
-    g2.sort(key=lambda x: x.get("id", 0))
+        # Sắp xếp nội bộ từng nhóm theo ID
+        g0.sort(key=lambda x: x.get("id", 0))
+        g1.sort(key=lambda x: x.get("id", 0))
+        g2.sort(key=lambda x: x.get("id", 0))
 
-    sorted_orders = g0 + g1 + g2
+        sorted_orders = g0 + g1 + g2
+    else:
+        sorted_orders = filtered
 
     # Gán số thứ tự STT liên tục từ 1 đến N
     for index, item in enumerate(sorted_orders, start=1):

@@ -494,6 +494,7 @@
   <div class="toolbar">
     <button class="btn btn-primary" onclick="openAddModal()">✨ ➕ Thêm đơn</button>
     <button class="btn btn-white" onclick="trackAllOrders()">🔍 Tra cứu tất cả</button>
+    <button id="btnSortJourney" class="btn btn-white" onclick="toggleJourneySort()">🔃 Sắp xếp theo hành trình</button>
     <button class="btn btn-white" onclick="loadOrders()">🔄 Làm mới</button>
     <button class="btn btn-white" onclick="openPhoneGuide()">📱 Quét mã QR</button>
   </div>
@@ -627,6 +628,27 @@
       setInterval(checkTrackStatus, 3000);
     });
 
+    let sortByJourney = false;
+
+    function toggleJourneySort() {
+      sortByJourney = !sortByJourney;
+      const btn = document.getElementById('btnSortJourney');
+      if (btn) {
+        if (sortByJourney) {
+          btn.style.backgroundColor = '#FFB6C1';
+          btn.style.borderColor = '#D81B60';
+          btn.style.color = '#880E4F';
+          btn.innerText = '✅ Đang xếp theo hành trình';
+        } else {
+          btn.style.backgroundColor = '';
+          btn.style.borderColor = '';
+          btn.style.color = '';
+          btn.innerText = '🔃 Sắp xếp theo hành trình';
+        }
+      }
+      loadOrders();
+    }
+
     function debounceSearch() {
       clearTimeout(searchTimer);
       searchTimer = setTimeout(loadOrders, 300);
@@ -636,7 +658,7 @@
       const search = document.getElementById('searchInput').value;
       const carrier = document.getElementById('carrierSelect').value;
       try {
-        const res = await fetch(`/api/orders?search=${encodeURIComponent(search)}&carrier_filter=${encodeURIComponent(carrier)}`);
+        const res = await fetch(`/api/orders?search=${encodeURIComponent(search)}&carrier_filter=${encodeURIComponent(carrier)}&sort_by_journey=${sortByJourney}`);
         const data = await res.json();
         currentOrders = data;
         renderOrders(data);

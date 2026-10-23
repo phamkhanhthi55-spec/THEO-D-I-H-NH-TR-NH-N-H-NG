@@ -137,6 +137,7 @@ class TestGUI(unittest.TestCase):
         id4 = self.window.db.add_order(account_name="Acc4", product_name="Đơn mới", tracking_code="SPX04", carrier="SPX")
 
         self.window.load_data()
+        self.window.sort_by_journey()
         self.assertEqual(self.window.table.rowCount(), 4)
 
         # 2 đơn thông thường phải ở 2 hàng đầu (row 0, 1)
@@ -153,6 +154,28 @@ class TestGUI(unittest.TestCase):
         # STT phải luôn là 1, 2, 3, 4
         for r in range(4):
             self.assertEqual(self.window.table.item(r, 0).text(), str(r + 1))
+
+    def test_tracking_does_not_change_order_position(self):
+        """Kiểm tra: Sau khi tra cứu xong, đơn hàng vẫn giữ đúng vị trí cũ, không bị tự động đẩy xuống."""
+        id1 = self.window.db.add_order(account_name="Acc1", product_name="Đơn vị trí 1", tracking_code="SPX01", carrier="SPX")
+        id2 = self.window.db.add_order(account_name="Acc2", product_name="Đơn vị trí 2", tracking_code="SPX02", carrier="SPX")
+        id3 = self.window.db.add_order(account_name="Acc3", product_name="Đơn vị trí 3", tracking_code="SPX03", carrier="SPX")
+
+        self.window.load_data()
+        self.assertEqual(self.window.table.rowCount(), 3)
+        self.assertEqual(self.window.table.item(1, 2).text(), "Đơn vị trí 2")
+
+        # Giả lập kết quả tra cứu của đơn vị trí 2 là 'Giao hàng thành công'
+        self.window._on_tracking_result(id2, True, "Giao hàng thành công", "Đã giao thành công", "")
+        self.window._on_tracking_finished(1, 0)
+
+        # Đơn vị trí 2 VẪN PHẢI NẰM Ở HÀNG 1 (hàng thứ 2, index 1), KHÔNG bị nhảy xuống hàng cuối
+        self.assertEqual(self.window.table.item(1, 2).text(), "Đơn vị trí 2")
+        self.assertEqual(self.window.table.item(1, 4).text(), "Giao hàng thành công")
+
+        # Chỉ khi người dùng bấm nút sắp xếp theo hành trình thì mới được đẩy xuống cuối
+        self.window.sort_by_journey()
+        self.assertEqual(self.window.table.item(2, 2).text(), "Đơn vị trí 2")
 
 
 if __name__ == '__main__':
