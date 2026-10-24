@@ -61,6 +61,22 @@ async def _track_spx_async(tracking_code):
             page = await context.new_page()
             await page.add_init_script("delete Object.getPrototypeOf(navigator).webdriver")
 
+            # Bắt gói tin API get_order_info của SPX (chứa 100% mốc hành trình đầy đủ nhất, không bị ẩn như giao diện web)
+            api_records = []
+
+            async def on_response(response):
+                if 'get_order_info' in response.url:
+                    try:
+                        data = await response.json()
+                        records = data.get('data', {}).get('sls_tracking_info', {}).get('records', [])
+                        if records:
+                            api_records.clear()
+                            api_records.extend(records)
+                    except Exception:
+                        pass
+
+            page.on('response', on_response)
+
             # Truy cập trang tracking SPX (SPX nhận mã trực tiếp sau dấu ?, không dùng trackingNo=)
             await page.goto(
                 f'https://spx.vn/track?{tracking_code}',
@@ -86,67 +102,101 @@ async def _track_spx_async(tracking_code):
                         await btn.click()
                     else:
                         await page.keyboard.press('Enter')
-                await page.wait_for_timeout(5000)
+                await page.wait_for_timeout(4000)
             except Exception:
                 pass
-
-            # Đọc toàn bộ văn bản trang để trích xuất hành trình
-            body_text = await page.inner_text('body')
-            lines = [l.strip() for l in body_text.split('\n') if l.strip()]
-
-            # 1. Trích xuất các mốc hành trình dạng:
-            # HH:MM:SS -> Ngày tháng -> Nội dung hành trình
-            timeline_items = []
-            i = 0
-            while i < len(lines):
-                if re.match(r'^\d{1,2}:\d{2}(:\d{2})?$', lines[i]):
-                    t_str = lines[i]
-                    d_str = lines[i+1] if i + 1 < len(lines) else ""
-                    m_str = lines[i+2] if i + 2 < len(lines) else ""
-                    if m_str and not re.match(r'^\d{1,2}:\d{2}', m_str) and not m_str.startswith('SPX'):
-                        timeline_items.append({
-                            'time': t_str,
-                            'date': d_str,
-                            'message': m_str
-                        })
-                        i += 3
-                        continue
-                i += 1
 
             status_text = ''
             detail_text = ''
 
-            if timeline_items:
-                # Trạng thái gần nhất chính là mốc đầu tiên
-                status_text = timeline_items[0]['message']
-                # Chi tiết đầy đủ
-                detail_lines = [f"{it['time']} {it['date']}: {it['message']}" for it in timeline_items]
-                detail_text = "\n".join(detail_lines)
+            # ƯU TIÊN 1: Nếu đã bắt được dữ liệu trực tiếp từ API get_order_info của SPX
+            if api_records:
+                # Sắp xếp theo actual_time giảm dần (mốc mới nhất lên đầu)
+                api_records.sort(key=lambda r: r.get('actual_time', 0), reverse=True)
+                latest = api_records[0]
+                status_text = (
+                    latest.get('buyer_description')
+                    or latest.get('description')
+                    or latest.get('seller_description')
+                    or ''
+                ).strip()
 
-            # 2. Nếu chưa có timeline_items, tìm trong các thẻ class message/text
+                detail_lines = []
+                for r in api_records:
+                    act_time = r.get('actual_time')
+                    if act_time:
+                        dt_str = datetime.fromtimestamp(act_time).strftime('%Y-%m-%d %H:%M:%S')
+                    else:
+                        dt_str = ''
+                    desc = (
+                        r.get('buyer_description')
+                        or r.get('description')
+                        or r.get('seller_description')
+                        or ''
+                    ).strip()
+                    if dt_str and desc:
+                        detail_lines.append(f"{dt_str}: {desc}")
+                    elif desc:
+                        detail_lines.append(desc)
+
+                if detail_lines:
+                    detail_text = "\n".join(detail_lines)
+
+            # ƯU TIÊN 2: Nếu chưa có dữ liệu API, bóc tách qua DOM HTML
             if not status_text:
-                for sel in ['.message', 'p.text', '.status-text', '[class*="status"]', '[class*="message"]']:
-                    try:
-                        elements = await page.query_selector_all(sel)
-                        for el in elements:
-                            txt = (await el.inner_text()).strip()
-                            if txt and len(txt) > 3 and not txt.startswith('SPX') and txt not in ['Theo dõi', 'Đăng nhập', 'Trang chủ']:
-                                status_text = txt[:200]
-                                detail_text = txt
+                body_text = await page.inner_text('body')
+                lines = [l.strip() for l in body_text.split('\n') if l.strip()]
+
+                # 1. Trích xuất các mốc hành trình dạng:
+                # HH:MM:SS -> Ngày tháng -> Nội dung hành trình
+                timeline_items = []
+                i = 0
+                while i < len(lines):
+                    if re.match(r'^\d{1,2}:\d{2}(:\d{2})?$', lines[i]):
+                        t_str = lines[i]
+                        d_str = lines[i+1] if i + 1 < len(lines) else ""
+                        m_str = lines[i+2] if i + 2 < len(lines) else ""
+                        if m_str and not re.match(r'^\d{1,2}:\d{2}', m_str) and not m_str.startswith('SPX'):
+                            timeline_items.append({
+                                'time': t_str,
+                                'date': d_str,
+                                'message': m_str
+                            })
+                            i += 3
+                            continue
+                    i += 1
+
+                if timeline_items:
+                    # Trạng thái gần nhất chính là mốc đầu tiên
+                    status_text = timeline_items[0]['message']
+                    # Chi tiết đầy đủ
+                    detail_lines = [f"{it['time']} {it['date']}: {it['message']}" for it in timeline_items]
+                    detail_text = "\n".join(detail_lines)
+
+                # 2. Nếu chưa có timeline_items, tìm trong các thẻ class message/text
+                if not status_text:
+                    for sel in ['.message', 'p.text', '.status-text', '[class*="status"]', '[class*="message"]']:
+                        try:
+                            elements = await page.query_selector_all(sel)
+                            for el in elements:
+                                txt = (await el.inner_text()).strip()
+                                if txt and len(txt) > 3 and not txt.startswith('SPX') and txt not in ['Theo dõi', 'Đăng nhập', 'Trang chủ']:
+                                    status_text = txt[:200]
+                                    detail_text = txt
+                                    break
+                            if status_text:
                                 break
-                        if status_text:
-                            break
-                    except Exception:
-                        pass
+                        except Exception:
+                            pass
 
-            # 3. Thử tìm qua 4 bước trạng thái chuẩn của SPX:
-            if not status_text:
-                stages = ['Đã giao hàng', 'Đang giao hàng', 'Đang vận chuyển', 'Chờ lấy hàng']
-                for stage in stages:
-                    if stage in lines:
-                        status_text = stage
-                        detail_text = f"Trạng thái: {stage}"
-                        break
+                # 3. Thử tìm qua 4 bước trạng thái chuẩn của SPX:
+                if not status_text:
+                    stages = ['Đã giao hàng', 'Đang giao hàng', 'Đang vận chuyển', 'Chờ lấy hàng']
+                    for stage in stages:
+                        if stage in lines:
+                            status_text = stage
+                            detail_text = f"Trạng thái: {stage}"
+                            break
 
             await browser.close()
 
@@ -154,7 +204,7 @@ async def _track_spx_async(tracking_code):
                 return TrackingResult(
                     success=True,
                     status=status_text,
-                    detail=detail_text.strip()[:2000] if detail_text else status_text
+                    detail=detail_text.strip()[:3000] if detail_text else status_text
                 )
             else:
                 # Chỉ báo không tìm thấy nếu không có bất kỳ trạng thái nào
