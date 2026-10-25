@@ -19,7 +19,7 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
-from src.database import DatabaseManager
+from src.database import DatabaseManager, append_created_date_to_product
 from src.carrier import detect_carrier, get_carrier_name, CARRIER_SPX, CARRIER_GHN, CARRIER_UNKNOWN
 from src.tracking import track_order
 
@@ -27,6 +27,7 @@ app = FastAPI(title="Theo dõi hành trình đơn hàng - Web & Mobile")
 
 # Database manager
 db = DatabaseManager()
+db.migrate_product_creation_dates()
 
 # Tracking progress tracker
 tracking_state = {
@@ -165,9 +166,10 @@ def list_orders(search: str = "", carrier_filter: str = "ALL", sort_by_journey: 
 def create_order(data: OrderCreate):
     """Thêm đơn hàng mới."""
     carrier = data.carrier or detect_carrier(data.tracking_code or "")
+    prod_name = append_created_date_to_product(data.product_name or "")
     new_id = db.add_order(
         account_name=data.account_name or "",
-        product_name=data.product_name or "",
+        product_name=prod_name,
         tracking_code=data.tracking_code or "",
         carrier=carrier,
         amount=data.amount or 0.0,
@@ -195,6 +197,12 @@ def update_order(order_id: int, data: OrderUpdate):
     # Tự động nhận diện carrier nếu thay đổi tracking_code mà chưa có carrier
     if "tracking_code" in fields and ("carrier" not in fields or not fields["carrier"]):
         fields["carrier"] = detect_carrier(fields["tracking_code"])
+
+    # Bảo toàn ngày tạo gốc của sản phẩm nếu thay đổi tên sản phẩm
+    if "product_name" in fields and fields["product_name"]:
+        fields["product_name"] = append_created_date_to_product(
+            fields["product_name"], existing_dict.get("created_at")
+        )
 
     # Cập nhật các trường
     db.update_order(

@@ -7,6 +7,7 @@ import sqlite3
 import os
 import shutil
 import json
+import re
 from datetime import datetime
 from pathlib import Path
 
@@ -22,6 +23,42 @@ def get_data_dir():
 def get_db_path():
     """Trả về đường dẫn file database."""
     return os.path.join(get_data_dir(), 'orders.db')
+
+
+def format_created_date(created_at_str=None):
+    """
+    Chuyển đổi chuỗi created_at thành định dạng ngày dd/mm/yyyy.
+    Ví dụ: '2026-10-18 11:17:18' -> '18/10/2026'.
+    Nếu không có created_at_str, trả về ngày hiện tại.
+    """
+    if not created_at_str:
+        return datetime.now().strftime('%d/%m/%Y')
+    try:
+        clean_str = str(created_at_str).strip()
+        date_part = clean_str.split(' ')[0].split('T')[0]
+        parts = date_part.split('-')
+        if len(parts) == 3:
+            return f"{int(parts[2]):02d}/{int(parts[1]):02d}/{parts[0]}"
+    except Exception:
+        pass
+    return datetime.now().strftime('%d/%m/%Y')
+
+
+def append_created_date_to_product(product_name, created_at_str=None):
+    """
+    Tự động ghi chú thêm ngày tạo đơn vào sau tên sản phẩm nếu chưa có.
+    Ví dụ: 'Áo thun' -> 'Áo thun (18/10/2026)'.
+    Nếu đã có ngày tạo ở đuôi (dạng (dd/mm/yyyy) hoặc (dd/mm)) thì giữ nguyên,
+    không bao giờ thay đổi hay thêm trùng lặp.
+    """
+    name = (product_name or '').strip()
+    if not name:
+        return name
+    # Kiểm tra xem tên sản phẩm đã có phần ngày trong ngoặc ở cuối chưa
+    if re.search(r'\(\s*(?:ng[àa]y\s+)?\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?\s*\)\s*$', name, re.IGNORECASE):
+        return name
+    date_str = format_created_date(created_at_str)
+    return f"{name} ({date_str})"
 
 
 class DatabaseManager:
@@ -329,6 +366,27 @@ class DatabaseManager:
             extra_dict = {}
         extra_dict[col_name] = str(value)
         self.update_order(order_id, extra_data=extra_dict)
+
+    def migrate_product_creation_dates(self):
+        """Tự động cập nhật thêm ngày tạo đơn vào sau tên sản phẩm cho các đơn hàng cũ chưa có."""
+        try:
+            cursor = self.conn.execute(
+                "SELECT id, product_name, created_at FROM orders WHERE product_name IS NOT NULL AND product_name != ''"
+            )
+            rows = cursor.fetchall()
+            for r in rows:
+                oid = r['id']
+                pname = r['product_name']
+                cat = r['created_at']
+                updated_name = append_created_date_to_product(pname, cat)
+                if updated_name != pname:
+                    self.conn.execute(
+                        "UPDATE orders SET product_name = ? WHERE id = ?",
+                        (updated_name, oid)
+                    )
+            self.conn.commit()
+        except sqlite3.Error:
+            pass
 
     def close(self):
         """Đóng kết nối database."""

@@ -9,7 +9,9 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.database import DatabaseManager
+from src.database import (
+    DatabaseManager, format_created_date, append_created_date_to_product
+)
 from src.carrier import detect_carrier, validate_tracking_code, CARRIER_SPX, CARRIER_GHN, CARRIER_UNKNOWN
 from src.data_io import parse_amount, format_amount
 
@@ -231,6 +233,66 @@ class TestColumnOrder(unittest.TestCase):
         from src.main_window import MainWindow
         self.assertEqual(MainWindow.COLUMNS, expected)
         self.assertEqual(MainWindow.COL_COUNT, 7)
+
+
+class TestProductCreationDate(unittest.TestCase):
+    """Test tự động thêm và giữ nguyên ngày tạo đơn vào sau tên sản phẩm."""
+
+    def test_format_created_date(self):
+        """Test chuyển đổi chuỗi created_at thành dd/mm/yyyy."""
+        self.assertEqual(format_created_date('2026-10-18 11:17:18'), '18/10/2026')
+        self.assertEqual(format_created_date('2026-10-23 17:13:36'), '23/10/2026')
+        self.assertEqual(format_created_date('2026-05-09'), '09/05/2026')
+
+    def test_append_created_date(self):
+        """Test thêm ngày tạo đơn vào sau tên sản phẩm nếu chưa có."""
+        res = append_created_date_to_product('ÁO CHO TUN', '2026-10-18 11:17:18')
+        self.assertEqual(res, 'ÁO CHO TUN (18/10/2026)')
+
+        # Nếu đã có ngày tạo ở đuôi thì giữ nguyên, không nhân đôi
+        res2 = append_created_date_to_product('ÁO CHO TUN (18/10/2026)', '2026-10-18 11:17:18')
+        self.assertEqual(res2, 'ÁO CHO TUN (18/10/2026)')
+
+        res3 = append_created_date_to_product('ÁO CHO TUN (18/10)', '2026-10-18 11:17:18')
+        self.assertEqual(res3, 'ÁO CHO TUN (18/10)')
+
+        # Rỗng
+        self.assertEqual(append_created_date_to_product(''), '')
+        self.assertEqual(append_created_date_to_product(None), '')
+
+    def test_migrate_existing_orders(self):
+        """Test migration tự động gắn ngày tạo cho các đơn hàng cũ."""
+        temp_dir = tempfile.mkdtemp()
+        db_path = os.path.join(temp_dir, 'migrate_test.db')
+        db = DatabaseManager(db_path)
+
+        # Thêm thủ công đơn hàng chưa có ngày
+        db.conn.execute(
+            "INSERT INTO orders (account_name, product_name, created_at) VALUES (?, ?, ?)",
+            ('acc1', 'Áo khoác', '2026-10-18 10:00:00')
+        )
+        db.conn.execute(
+            "INSERT INTO orders (account_name, product_name, created_at) VALUES (?, ?, ?)",
+            ('acc2', 'Quần jean (19/10/2026)', '2026-10-19 12:00:00')
+        )
+        db.conn.commit()
+
+        # Chạy migration
+        db.migrate_product_creation_dates()
+
+        orders = db.get_all_orders()
+        db.close()
+
+        self.assertEqual(orders[0]['product_name'], 'Áo khoác (18/10/2026)')
+        self.assertEqual(orders[1]['product_name'], 'Quần jean (19/10/2026)')
+
+    def test_preserve_creation_date_on_edit(self):
+        """Test khi sửa tên sản phẩm thì ngày tạo gốc vẫn được giữ nguyên không đổi."""
+        original_created_at = '2026-10-18 11:17:18'
+        # Người dùng sửa tên sản phẩm thành tên mới không chứa ngày
+        edited_name = 'Áo thun polo mới'
+        preserved_name = append_created_date_to_product(edited_name, original_created_at)
+        self.assertEqual(preserved_name, 'Áo thun polo mới (18/10/2026)')
 
 
 if __name__ == '__main__':

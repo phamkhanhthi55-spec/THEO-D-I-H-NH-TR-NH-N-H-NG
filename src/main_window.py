@@ -24,7 +24,7 @@ from PySide6.QtGui import (
     QPainter, QLinearGradient
 )
 
-from .database import DatabaseManager, get_data_dir
+from .database import DatabaseManager, get_data_dir, append_created_date_to_product
 from .carrier import (
     detect_carrier, get_carrier_name, validate_tracking_code,
     CARRIER_SPX, CARRIER_GHN, CARRIER_UNKNOWN, needs_phone_last4
@@ -701,6 +701,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.db = DatabaseManager()
+        self.db.migrate_product_creation_dates()
         self.all_orders = []          # Toàn bộ đơn hàng từ DB
         self.filtered_orders = []     # Đơn hàng sau khi lọc
         self.custom_columns = self.db.get_custom_columns()
@@ -1700,6 +1701,9 @@ class MainWindow(QMainWindow):
         if dialog.exec() == QDialog.Accepted:
             data = dialog.get_data()
             try:
+                # Tự động thêm ngày tạo đơn vào sau tên sản phẩm nếu chưa có
+                if data.get('product_name'):
+                    data['product_name'] = append_created_date_to_product(data['product_name'])
                 self.db.add_order(**data)
                 self.load_data()
                 self.status_label.setText("✅ Đã thêm đơn hàng mới")
@@ -1726,6 +1730,11 @@ class MainWindow(QMainWindow):
         if dialog.exec() == QDialog.Accepted:
             data = dialog.get_data()
             try:
+                if data.get('product_name'):
+                    # Giữ nguyên ngày tạo gốc của đơn hàng (không bao giờ thay đổi)
+                    data['product_name'] = append_created_date_to_product(
+                        data['product_name'], order.get('created_at')
+                    )
                 self.db.update_order(ids[0], **data)
                 self.load_data()
                 self.status_label.setText("✅ Đã cập nhật đơn hàng")
@@ -1824,6 +1833,16 @@ class MainWindow(QMainWindow):
                 self.db.update_order(order_id, account_name=new_text)
                 self._update_order_cache(order_id, 'account_name', new_text)
             elif col == 2:  # Tên SP
+                order = next((o for o in self.all_orders if o.get('id') == order_id), None)
+                if not order:
+                    order = self.db.get_order(order_id)
+                created_at = order.get('created_at') if order else None
+                final_name = append_created_date_to_product(new_text, created_at)
+                if final_name != new_text:
+                    self._loading_data = True
+                    item.setText(final_name)
+                    self._loading_data = False
+                    new_text = final_name
                 self.db.update_order(order_id, product_name=new_text)
                 self._update_order_cache(order_id, 'product_name', new_text)
             elif col == 3:  # Mã vận đơn
@@ -2313,9 +2332,10 @@ class MainWindow(QMainWindow):
             added = 0
             for order_data in orders:
                 carrier = detect_carrier(order_data.get('tracking_code', ''))
+                prod_name = append_created_date_to_product(order_data.get('product_name', ''))
                 self.db.add_order(
                     account_name=order_data.get('account_name', ''),
-                    product_name=order_data.get('product_name', ''),
+                    product_name=prod_name,
                     tracking_code=order_data.get('tracking_code', ''),
                     carrier=carrier,
                     amount=order_data.get('amount', 0),
