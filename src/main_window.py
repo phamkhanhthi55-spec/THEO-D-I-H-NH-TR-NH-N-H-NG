@@ -659,9 +659,14 @@ class PastelHeaderView(QHeaderView):
             if logicalIndex == 4:
                 # Dành khoảng trống bên phải cho nút "🔃 Sắp xếp"
                 text_rect = rect.adjusted(8, 0, -100, 0)
+                painter.drawText(text_rect, Qt.AlignVCenter | Qt.AlignLeft, str(text) if text else "")
+            elif logicalIndex == 5 or logicalIndex == 6:
+                # Cột Money và Địa chỉ căn giữa gọn gàng
+                text_rect = rect.adjusted(2, 0, -2, 0)
+                painter.drawText(text_rect, Qt.AlignCenter, str(text) if text else "")
             else:
                 text_rect = rect.adjusted(8, 0, -8, 0)
-            painter.drawText(text_rect, Qt.AlignVCenter | Qt.AlignLeft, str(text) if text else "")
+                painter.drawText(text_rect, Qt.AlignVCenter | Qt.AlignLeft, str(text) if text else "")
 
         # Vẽ mũi tên sắp xếp nếu cột này đang được sort
         if self.isSortIndicatorShown() and self.sortIndicatorSection() == logicalIndex:
@@ -680,7 +685,7 @@ class MainWindow(QMainWindow):
     """Cửa sổ chính của ứng dụng."""
 
     BASE_COLUMNS = ['STT', 'Tên acc đặt', 'Tên SP', 'Mã vận đơn',
-                    'Hành trình di chuyển', 'Số tiền cần thanh toán', 'Địa chỉ']
+                    'Hành trình di chuyển', 'Money', 'Địa chỉ']
     COL_STT = 0
     COL_ACCOUNT = 1
     COL_PRODUCT = 2
@@ -1494,25 +1499,26 @@ class MainWindow(QMainWindow):
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.Fixed)       # STT
         header.setSectionResizeMode(1, QHeaderView.Interactive) # Tên acc
-        header.setSectionResizeMode(2, QHeaderView.Interactive) # Tên SP
+        header.setSectionResizeMode(2, QHeaderView.Stretch)     # Tên SP (mở rộng tối đa thấy hết tên và ngày)
         header.setSectionResizeMode(3, QHeaderView.Interactive) # Mã vận đơn
-        header.setSectionResizeMode(4, QHeaderView.Stretch)     # Hành trình
-        header.setSectionResizeMode(5, QHeaderView.Interactive) # Số tiền
+        header.setSectionResizeMode(4, QHeaderView.Interactive) # Hành trình
+        header.setSectionResizeMode(5, QHeaderView.Interactive) # Money
         if self.table.columnCount() > 6:
             header.setSectionResizeMode(6, QHeaderView.Interactive) # Địa chỉ
 
         for c in range(7, self.table.columnCount()):
             header.setSectionResizeMode(c, QHeaderView.Interactive) # Cột tùy chọn
 
-        self.table.setColumnWidth(0, 58)
-        self.table.setColumnWidth(1, 150)
-        self.table.setColumnWidth(2, 200)
-        self.table.setColumnWidth(3, 180)
-        self.table.setColumnWidth(5, 160)
+        self.table.setColumnWidth(0, 48)
+        self.table.setColumnWidth(1, 115)
+        # Cột 2 (Tên SP) tự động co giãn Stretch theo chiều rộng cửa sổ
+        self.table.setColumnWidth(3, 150)
+        self.table.setColumnWidth(4, 230)
+        self.table.setColumnWidth(5, 68)
         if self.table.columnCount() > 6:
-            self.table.setColumnWidth(6, 140)
+            self.table.setColumnWidth(6, 96)
         for c in range(7, self.table.columnCount()):
-            self.table.setColumnWidth(c, 140)
+            self.table.setColumnWidth(c, 110)
 
         self._update_header_sort_button_geometry()
 
@@ -1578,19 +1584,19 @@ class MainWindow(QMainWindow):
                     f"\n⚠️ Lỗi: {order['last_error']}")
             self.table.setItem(row, 4, journey_item)
 
-            # Số tiền cần thanh toán
+            # Cột 5: Money (Căn giữa)
             amount_text = order.get('amount_text', '')
             if not amount_text and order.get('amount', 0):
                 amount_text = format_amount(order['amount'])
             amount_item = QTableWidgetItem(amount_text)
-            amount_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            amount_item.setTextAlignment(Qt.AlignCenter)
             amount_item.setForeground(QColor('#AD1457'))
             font_amt = amount_item.font()
             font_amt.setBold(True)
             amount_item.setFont(font_amt)
             self.table.setItem(row, 5, amount_item)
 
-            # Cột 7: Địa chỉ (tùy chọn Bình Định / Quy Nhơn)
+            # Cột 6: Địa chỉ (tùy chọn Bình Định / Quy Nhơn vừa vặn)
             curr_addr = order.get('address', '')
             addr_item = QTableWidgetItem(curr_addr)
             addr_item.setForeground(QColor('#4A3B43'))
@@ -1613,7 +1619,7 @@ class MainWindow(QMainWindow):
                     color: #4A3B43;
                     border: 1px solid #FFCCD5;
                     border-radius: 8px;
-                    padding: 2px 6px;
+                    padding: 2px 4px;
                     font-size: 11px;
                     font-weight: 500;
                 }

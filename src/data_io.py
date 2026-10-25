@@ -94,6 +94,7 @@ def import_excel(file_path):
             'hành trình': 'journey_status',
             'trạng thái': 'journey_status',
             'status': 'journey_status',
+            'money': 'amount_text',
             'số tiền cần thanh toán': 'amount_text',
             'số tiền': 'amount_text',
             'tiền': 'amount_text',
@@ -232,6 +233,7 @@ def import_csv(file_path):
         'hành trình': 'journey_status',
         'trạng thái': 'journey_status',
         'status': 'journey_status',
+        'money': 'amount_text',
         'số tiền cần thanh toán': 'amount_text',
         'số tiền': 'amount_text',
         'tiền': 'amount_text',
@@ -315,7 +317,7 @@ def export_excel(file_path, orders, custom_columns=None):
 
     custom_cols = list(custom_columns or [])
     headers = ['STT', 'Tên acc đặt', 'Tên SP', 'Mã vận đơn',
-               'Hành trình di chuyển', 'Số tiền cần thanh toán', 'Địa chỉ'] + custom_cols
+               'Hành trình di chuyển', 'Money', 'Địa chỉ'] + custom_cols
 
     header_fill = PatternFill(start_color='FF7891', end_color='FF7891', fill_type='solid')
     header_font_white = Font(bold=True, size=11, color='FFFFFF')
@@ -399,7 +401,7 @@ def export_csv(file_path, orders, custom_columns=None):
     """
     custom_cols = list(custom_columns or [])
     headers = ['STT', 'Tên acc đặt', 'Tên SP', 'Mã vận đơn',
-               'Hành trình di chuyển', 'Số tiền cần thanh toán', 'Địa chỉ'] + custom_cols
+               'Hành trình di chuyển', 'Money', 'Địa chỉ'] + custom_cols
 
     try:
         with open(file_path, 'w', encoding='utf-8-sig', newline='') as f:

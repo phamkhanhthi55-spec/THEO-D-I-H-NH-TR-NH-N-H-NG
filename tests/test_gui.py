@@ -44,7 +44,7 @@ class TestGUI(unittest.TestCase):
         """Kiểm tra khởi tạo giao diện và số cột."""
         self.assertEqual(self.window.table.columnCount(), 7)
         expected_headers = ['STT', 'Tên acc đặt', 'Tên SP', 'Mã vận đơn',
-                            'Hành trình di chuyển', 'Số tiền cần thanh toán', 'Địa chỉ']
+                            'Hành trình di chuyển', 'Money', 'Địa chỉ']
         for i, header in enumerate(expected_headers):
             self.assertEqual(self.window.table.horizontalHeaderItem(i).text(), header)
 

@@ -229,7 +229,7 @@ class TestColumnOrder(unittest.TestCase):
     def test_column_order(self):
         """Test đúng thứ tự 7 cột cơ bản."""
         expected = ['STT', 'Tên acc đặt', 'Tên SP', 'Mã vận đơn',
-                    'Hành trình di chuyển', 'Số tiền cần thanh toán', 'Địa chỉ']
+                    'Hành trình di chuyển', 'Money', 'Địa chỉ']
         from src.main_window import MainWindow
         self.assertEqual(MainWindow.COLUMNS, expected)
         self.assertEqual(MainWindow.COL_COUNT, 7)
