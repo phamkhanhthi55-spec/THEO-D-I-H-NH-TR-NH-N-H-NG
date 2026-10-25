@@ -50,103 +50,188 @@ async def _track_spx_async(tracking_code):
                 args=[
                     '--disable-blink-features=AutomationControlled',
                     '--no-sandbox',
-                    '--disable-setuid-sandbox'
+                    '--disable-setuid-sandbox',
+                    '--disable-gpu',
+                    '--disable-dev-shm-usage',
                 ]
             )
             context = await browser.new_context(
                 locale='vi-VN',
-                viewport={'width': 1400, 'height': 900},
+                viewport={'width': 1280, 'height': 800},
                 user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
             )
             page = await context.new_page()
             await page.add_init_script("delete Object.getPrototypeOf(navigator).webdriver")
 
-            # Truy cập trang tracking SPX (SPX nhận mã trực tiếp sau dấu ?, không dùng trackingNo=)
+            # Chặn tài nguyên nặng (ảnh, font, tracking analytics) để tăng tốc và giữ máy luôn mượt mà
+            async def block_heavy_assets(route):
+                req = route.request
+                rt = req.resource_type
+                url = req.url
+                if rt in ['image', 'media', 'font'] or any(k in url for k in ['google', 'facebook', 'ping.png', 'dem.shopee']):
+                    await route.abort()
+                else:
+                    await route.continue_()
+
+            await page.route('**/*', block_heavy_assets)
+
+            # Lắng nghe gói tin API get_order_info trực tiếp từ SPX
+            api_records = []
+            api_error = None
+
+            async def on_response(response):
+                if 'get_order_info' in response.url:
+                    try:
+                        data = await response.json()
+                        retcode = data.get('retcode', 0)
+                        if retcode == 0:
+                            records = data.get('data', {}).get('sls_tracking_info', {}).get('records', [])
+                            if records:
+                                api_records.clear()
+                                api_records.extend(records)
+                        else:
+                            nonlocal api_error
+                            api_error = data.get('message', 'Không tìm thấy đơn hàng')
+                    except Exception:
+                        pass
+
+            page.on('response', on_response)
+
+            # Mở trang tra cứu SPX
             await page.goto(
                 f'https://spx.vn/track?{tracking_code}',
-                timeout=30000,
+                timeout=25000,
                 wait_until='domcontentloaded'
             )
 
-            # Chờ trang load
-            await page.wait_for_timeout(3000)
+            # Vòng lặp chờ thông minh (tối đa 15s): phản hồi ngay lập tức khi nhận được kết quả
+            found_result = False
+            for step in range(30):
+                if api_records or api_error:
+                    found_result = True
+                    break
 
-            # Đảm bảo ô input có đúng mã vận đơn thuần túy và kích hoạt tra cứu
-            try:
-                inp = await page.query_selector('input')
-                if inp:
-                    current_val = await inp.input_value()
-                    if current_val != tracking_code:
-                        await inp.fill(tracking_code)
-                    await inp.focus()
-                    await page.keyboard.press('Enter')
-                else:
-                    btn = await page.query_selector('button:has-text("Theo dõi"), .track-btn, button[type="submit"]')
-                    if btn:
-                        await btn.click()
-                    else:
-                        await page.keyboard.press('Enter')
-                await page.wait_for_timeout(5000)
-            except Exception:
-                pass
+                try:
+                    res_elem = await page.query_selector('.quick-tracking-search-result')
+                    if res_elem:
+                        txt = (await res_elem.inner_text()).strip()
+                        if txt:
+                            found_result = True
+                            break
+                except Exception:
+                    pass
 
-            # Đọc toàn bộ văn bản trang để trích xuất hành trình
-            body_text = await page.inner_text('body')
-            lines = [l.strip() for l in body_text.split('\n') if l.strip()]
+                # Nếu sau 4 giây vẫn chưa thấy kết quả, kích hoạt ô input và nút tìm kiếm
+                if step == 8:
+                    try:
+                        inp = await page.query_selector('input')
+                        if inp:
+                            val = await inp.input_value()
+                            if val != tracking_code:
+                                await inp.fill(tracking_code)
+                            btn = await page.query_selector('button:has-text("Theo dõi"), .quick-tracking-search-input button')
+                            if btn:
+                                await btn.click()
+                            else:
+                                await inp.focus()
+                                await page.keyboard.press('Enter')
+                    except Exception:
+                        pass
 
-            # 1. Trích xuất các mốc hành trình dạng:
-            # HH:MM:SS -> Ngày tháng -> Nội dung hành trình
-            timeline_items = []
-            i = 0
-            while i < len(lines):
-                if re.match(r'^\d{1,2}:\d{2}(:\d{2})?$', lines[i]):
-                    t_str = lines[i]
-                    d_str = lines[i+1] if i + 1 < len(lines) else ""
-                    m_str = lines[i+2] if i + 2 < len(lines) else ""
-                    if m_str and not re.match(r'^\d{1,2}:\d{2}', m_str) and not m_str.startswith('SPX'):
-                        timeline_items.append({
-                            'time': t_str,
-                            'date': d_str,
-                            'message': m_str
-                        })
-                        i += 3
-                        continue
-                i += 1
+                await page.wait_for_timeout(500)
 
             status_text = ''
             detail_text = ''
 
-            if timeline_items:
-                # Trạng thái gần nhất chính là mốc đầu tiên
-                status_text = timeline_items[0]['message']
-                # Chi tiết đầy đủ
-                detail_lines = [f"{it['time']} {it['date']}: {it['message']}" for it in timeline_items]
-                detail_text = "\n".join(detail_lines)
+            # ƯU TIÊN 1: Dữ liệu API chính xác 100% với mốc thời gian chi tiết
+            if api_records:
+                api_records.sort(key=lambda r: r.get('actual_time', 0), reverse=True)
+                latest = api_records[0]
+                status_text = (
+                    latest.get('buyer_description')
+                    or latest.get('description')
+                    or latest.get('seller_description')
+                    or ''
+                ).strip()
 
-            # 2. Nếu chưa có timeline_items, tìm trong các thẻ class message/text
+                detail_lines = []
+                for r in api_records:
+                    act_time = r.get('actual_time')
+                    if act_time:
+                        dt_str = datetime.fromtimestamp(act_time).strftime('%Y-%m-%d %H:%M:%S')
+                    else:
+                        dt_str = ''
+                    desc = (
+                        r.get('buyer_description')
+                        or r.get('description')
+                        or r.get('seller_description')
+                        or ''
+                    ).strip()
+                    if dt_str and desc:
+                        detail_lines.append(f"{dt_str}: {desc}")
+                    elif desc:
+                        detail_lines.append(desc)
+
+                if detail_lines:
+                    detail_text = "\n".join(detail_lines)
+
+            # ƯU TIÊN 2: Bóc tách qua DOM HTML dự phòng
             if not status_text:
-                for sel in ['.message', 'p.text', '.status-text', '[class*="status"]', '[class*="message"]']:
-                    try:
-                        elements = await page.query_selector_all(sel)
-                        for el in elements:
-                            txt = (await el.inner_text()).strip()
-                            if txt and len(txt) > 3 and not txt.startswith('SPX') and txt not in ['Theo dõi', 'Đăng nhập', 'Trang chủ']:
-                                status_text = txt[:200]
-                                detail_text = txt
+                try:
+                    body_text = await page.inner_text('body')
+                    lines = [l.strip() for l in body_text.split('\n') if l.strip()]
+
+                    if any('không có kết quả' in l.lower() or 'không tìm thấy' in l.lower() for l in lines):
+                        await browser.close()
+                        return TrackingResult(
+                            success=False,
+                            error=f"Không tìm thấy hành trình cho mã {tracking_code} trên SPX. Vui lòng kiểm tra lại mã vận đơn."
+                        )
+
+                    timeline_items = []
+                    i = 0
+                    while i < len(lines):
+                        if re.match(r'^\d{1,2}:\d{2}(:\d{2})?$', lines[i]):
+                            t_str = lines[i]
+                            d_str = lines[i+1] if i + 1 < len(lines) else ""
+                            m_str = lines[i+2] if i + 2 < len(lines) else ""
+                            if m_str and not re.match(r'^\d{1,2}:\d{2}', m_str) and not m_str.startswith('SPX'):
+                                timeline_items.append({
+                                    'time': t_str,
+                                    'date': d_str,
+                                    'message': m_str
+                                })
+                                i += 3
+                                continue
+                        i += 1
+
+                    if timeline_items:
+                        status_text = timeline_items[0]['message']
+                        detail_lines = [f"{it['time']} {it['date']}: {it['message']}" for it in timeline_items]
+                        detail_text = "\n".join(detail_lines)
+
+                    if not status_text:
+                        for sel in ['.quick-tracking-search-result', '.message', 'p.text', '.status-text', '[class*="status"]', '[class*="message"]']:
+                            try:
+                                el = await page.query_selector(sel)
+                                if el:
+                                    txt = (await el.inner_text()).strip()
+                                    if txt and len(txt) > 3 and not txt.startswith('SPX') and txt not in ['Theo dõi', 'Đăng nhập', 'Trang chủ']:
+                                        status_text = txt[:200]
+                                        detail_text = txt
+                                        break
+                            except Exception:
+                                pass
+
+                    if not status_text:
+                        stages = ['Đã giao hàng', 'Đang giao hàng', 'Đang vận chuyển', 'Chờ lấy hàng']
+                        for stage in stages:
+                            if stage in lines:
+                                status_text = stage
+                                detail_text = f"Trạng thái: {stage}"
                                 break
-                        if status_text:
-                            break
-                    except Exception:
-                        pass
-
-            # 3. Thử tìm qua 4 bước trạng thái chuẩn của SPX:
-            if not status_text:
-                stages = ['Đã giao hàng', 'Đang giao hàng', 'Đang vận chuyển', 'Chờ lấy hàng']
-                for stage in stages:
-                    if stage in lines:
-                        status_text = stage
-                        detail_text = f"Trạng thái: {stage}"
-                        break
+                except Exception:
+                    pass
 
             await browser.close()
 
@@ -154,10 +239,9 @@ async def _track_spx_async(tracking_code):
                 return TrackingResult(
                     success=True,
                     status=status_text,
-                    detail=detail_text.strip()[:2000] if detail_text else status_text
+                    detail=detail_text.strip()[:3000] if detail_text else status_text
                 )
             else:
-                # Chỉ báo không tìm thấy nếu không có bất kỳ trạng thái nào
                 return TrackingResult(
                     success=False,
                     error=f"Không tìm thấy hành trình cho mã {tracking_code}. "
@@ -201,16 +285,30 @@ async def _track_ghn_async(tracking_code, phone_last4=''):
                 args=[
                     '--disable-blink-features=AutomationControlled',
                     '--no-sandbox',
-                    '--disable-setuid-sandbox'
+                    '--disable-setuid-sandbox',
+                    '--disable-gpu',
+                    '--disable-dev-shm-usage',
                 ]
             )
             context = await browser.new_context(
                 locale='vi-VN',
-                viewport={'width': 1400, 'height': 900},
+                viewport={'width': 1280, 'height': 800},
                 user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
             )
             page = await context.new_page()
             await page.add_init_script("delete Object.getPrototypeOf(navigator).webdriver")
+
+            # Chặn tài nguyên nặng
+            async def block_heavy_assets(route):
+                req = route.request
+                rt = req.resource_type
+                url = req.url
+                if rt in ['image', 'media', 'font'] or any(k in url for k in ['google', 'facebook']):
+                    await route.abort()
+                else:
+                    await route.continue_()
+
+            await page.route('**/*', block_heavy_assets)
 
             # Truy cập trang tracking GHN
             url = f'https://donhang.ghn.vn/?order_code={tracking_code}'
@@ -242,7 +340,6 @@ async def _track_ghn_async(tracking_code, phone_last4=''):
                         error=f"Trang Giao Hàng Nhanh bắt buộc cần Số điện thoại hoặc 4 số cuối SĐT để tra cứu {tracking_code}."
                     )
             else:
-                # Nếu trang chỉ có 1 ô hoặc đã tự tra cứu
                 btn = await page.query_selector('button:has-text("Tra cứu"), button[type="submit"]')
                 if btn:
                     await btn.click()
@@ -326,7 +423,6 @@ async def _track_ghn_async(tracking_code, phone_last4=''):
                 i += 1
 
             if timeline_items:
-                # Trạng thái gần nhất chính là mốc mới nhất ở đầu danh sách hành trình
                 status_text = timeline_items[0]['message']
                 detail_text = "\n".join([f"{it['time']} {it['date']}: {it['message']}" for it in timeline_items])
 
@@ -402,7 +498,6 @@ def track_spx(tracking_code):
     try:
         loop = asyncio.get_event_loop()
         if loop.is_running():
-            # Nếu đang trong event loop (ví dụ: Qt), tạo task
             import concurrent.futures
             with concurrent.futures.ThreadPoolExecutor() as executor:
                 future = executor.submit(asyncio.run, _track_spx_async(tracking_code))
@@ -469,7 +564,6 @@ def open_tracking_url(tracking_code, carrier):
     import webbrowser
     from .carrier import CARRIER_SPX, CARRIER_GHN
 
-    # Tự động sao chép mã vận đơn vào Clipboard để người dùng dán nếu cần
     try:
         from PySide6.QtGui import QGuiApplication
         clip = QGuiApplication.clipboard()
@@ -479,7 +573,6 @@ def open_tracking_url(tracking_code, carrier):
         pass
 
     if carrier == CARRIER_SPX:
-        # SPX nhận mã trực tiếp sau dấu ? (VD: https://spx.vn/track?SPXVN...)
         url = f'https://spx.vn/track?{tracking_code}'
     elif carrier == CARRIER_GHN:
         url = f'https://donhang.ghn.vn/?order_code={tracking_code}'
