@@ -1495,13 +1495,13 @@ class MainWindow(QMainWindow):
         self._loading_data = False
 
     def _setup_column_widths(self):
-        """Thiết lập chế độ co giãn và độ rộng các cột theo đúng chuẩn người dùng vừa chỉnh thủ công."""
+        """Thiết lập chế độ co giãn và độ rộng các cột, đảm bảo luôn lấp đầy 100% bề ngang bảng không để trống."""
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.Fixed)       # STT
         header.setSectionResizeMode(1, QHeaderView.Interactive) # Tên acc
-        header.setSectionResizeMode(2, QHeaderView.Interactive) # Tên SP (cho phép co giãn và kéo chỉnh tùy ý)
+        header.setSectionResizeMode(2, QHeaderView.Stretch)     # Tên SP (co giãn tự động, lấp đầy màn hình)
         header.setSectionResizeMode(3, QHeaderView.Interactive) # Mã vận đơn
-        header.setSectionResizeMode(4, QHeaderView.Interactive) # Hành trình
+        header.setSectionResizeMode(4, QHeaderView.Stretch)     # Hành trình (co giãn tự động cùng Tên SP)
         header.setSectionResizeMode(5, QHeaderView.Interactive) # Money
         if self.table.columnCount() > 6:
             header.setSectionResizeMode(6, QHeaderView.Interactive) # Địa chỉ
@@ -1509,16 +1509,15 @@ class MainWindow(QMainWindow):
         for c in range(7, self.table.columnCount()):
             header.setSectionResizeMode(c, QHeaderView.Interactive) # Cột tùy chọn
 
-        # Độ rộng mặc định khớp chuẩn 100% theo ảnh người dùng vừa chỉnh thủ công:
-        # STT: 40px | Tên acc: 94px | Tên SP: 288px | Mã vận đơn: 122px | Hành trình: 335px | Money: 56px | Địa chỉ: 78px
+        # Độ rộng chuẩn:
+        # STT: 40px | Tên acc: 94px | Mã vận đơn: 145px (không bị che số đuôi) | Money: 58px | Địa chỉ: 96px (hiển thị đủ Quy Nhơn / Bình Định)
+        # Cột 2 (Tên SP) và Cột 4 (Hành trình) cùng chia sẻ toàn bộ không gian còn lại để lấp đầy 100% cửa sổ khi phóng to/toàn màn hình
         self.table.setColumnWidth(0, 40)
         self.table.setColumnWidth(1, 94)
-        self.table.setColumnWidth(2, 288)
-        self.table.setColumnWidth(3, 122)
-        self.table.setColumnWidth(4, 335)
-        self.table.setColumnWidth(5, 56)
+        self.table.setColumnWidth(3, 145)
+        self.table.setColumnWidth(5, 58)
         if self.table.columnCount() > 6:
-            self.table.setColumnWidth(6, 78)
+            self.table.setColumnWidth(6, 96)
         for c in range(7, self.table.columnCount()):
             self.table.setColumnWidth(c, 100)
 
